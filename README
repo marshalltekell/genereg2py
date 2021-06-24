@@ -1,0 +1,7 @@
+source/genereg.f  Fortran 77 source code
+
+bin/SunOS/genereg Binary for SunOS
+
+manual/manual.ps  Manual (Postscript format)
+
+examples/fig*     Example data, parameter, solution, and output files

@@ -1,0 +1,4010 @@
+*----------------------------------------------------------------------
+* PROGRAM   : GENEREG: GENE(RALIZED NON LINEAR) REG(ULARIZATION METHOD)
+*
+* COPYRIGHT : FREIBURGER MATERIALFORSCHUNSZENTRUM F.M.F
+*             J. HONERKAMP
+*             J. WEESE
+*             T. ROTHS
+*
+* ADDRESS   : J. HONERKAMP
+*             UNIVERSITAET FREIBURG
+*             FAKULTAET FUER PHYSIK
+*             HERMANN-HERDER-STR. 3
+*             D-79104 FREIBURG / FRG
+*             TEL. 0761/203/5821
+*
+*             T. ROTHS
+*             FREIBURGER MATERIALFORSCHUNGSZENTRUM F.M.F
+*             STEFAN-MEIER-STR. 21
+*             D-79104 FREIBURG / FRG
+*             TEL. 0761/203/4807
+*
+*
+* REMARK    : THE AUTHORS WOULD APPRECIATE IT, IF THEY WOULD BE 
+*             INFORMED ABOUT APPLICATIONS OF THE PROGRAM GENEREG
+*
+* RELEASE   : 1.2     (30.3.1999)
+*
+* PURPOSE   : CALCULATION OF THE SOLUTION OF A NONLINEAR ILL-POSED
+*             PROBLEM BY A GENERALIZED REGULARIZATION METHOD WITH
+*             NONLINEAR REGULARIZATION TERM
+*
+* COMPUTER  : SUN SPARCSTATION; PC WINDOWS 95/NT/98
+*
+* FILES     : #10 GENEREG.PAR : INPUT PARAMETER
+*             #11 GENEREG.DAT : DATA POINTS
+*             #12 GENEREG.SOL : CALCULATED SOLUTION
+*             #13 GENEREG.ADP : COEFFICIENTS AJ
+*             #14 GENEREG.SOL : INPUT FIRST GUESS FOR FSSJ
+*
+* VARIABLES : NMAX   : MAXIMUM NUMBER OF DATA POINTS
+*             MMAX   : MAXIMUM NUMBER OF COEFFICIENTS AJ
+*             NSMAX  : MAXIMUM NUMBER OF POINTS WHERE THE SOLUTION IS
+*                      CALCULATED
+*
+*             N      : NUMBER OF DATA POINTS
+*             NE     : NUMBER OF DIFFERENT EQUATIONS
+*             TI     : ABSZISSE OF DATA POINTS
+*             GSTI   : ORDINATE OF DATA POINTS
+*             GERRTI : ERROR OF DATA POINTS
+*             ERROR  : SCALEFACTOR OF ERROR
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SMIN,
+*             SMAX   : INTERVAL IN WHICH THE SOLUTION IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             FSSJ   : VALUES OF THE CALCULATED SOLUTION
+*             FMSJ   : MIDPOINT FOR THE ERRORS OF THE CALCULATED SOL.
+*             FERRSJ : ERRORS OF THE CALCULATED SOLUTION
+*             HS     : INTEGRATION CONSTANT
+*
+*             M      : NUMBER OF COEFFICIENTS AJ
+*             ASJ    : VALUES OF THE CALCULATED COEFFICIENTS AJ
+*             AERRJ  : ERRORS OF THE CALCULATED COEFFICIENTS AJ
+*
+*             B      : ADDITIONAL LINEAR TERMS
+*
+*             NL     : FIRST DIMENSION OF THE REGULARIZATION OPERATOR
+*             L      : APPROXIMATED REGULARIZATION OPERATOR
+*
+*             DISMOD : MODE FOR DISCRETIZATION OF THE INTEGRALS
+*             ERRMOD : MODE FOR ESTIMATION OF THE ERROR
+*             POSMOD : MODE FOR POSITIVITY CONSTRAINT
+*             REGMOD : MODE FOR CALCULATION OF THE SOLUTION
+*             REGFUN : MODE FOR REGULARIZATION FUNCTIONAL
+*             INFMOD : MODE FOR OUTPUT OF ADDITIONAL INFORMATION
+*             REGFUN : NUMBER OF REGULARIZATION FUNCTIONAL
+*
+*             LAMBDA : REGULARIZATION PARAMETER
+*             LAMB?? : PARAMETER FOR THE CALCULATION OF LAMBDA
+*
+*             GN??   : PARAMETER FOR MINIMIZATION
+*             MINMOD : PARAMETER FOR MINIMIZATION (GNC METHOD)
+*             ALPHA  : PARAMETER FOR NONLINEAR REGULARIZATION TERM
+*             NALPHA : NUMBER OF GNC STEPS
+*             INIMOD : PARAMETER FOR INITIAL VALUES
+*
+*             IFWK   : INTEGER WORKSPACE
+*             DPFWK  : DOUBLE PRECISION WORKSPACE
+*
+* COMMENT   : THE SIZE OF THE INTEGER WORKSPACE HAS TO BE AT LEAST
+*             2(M + NS)
+*
+*             THE SIZE OF THE DOUBLE PRECISION WORKSPACE HAS TO BE AT
+*             LEAST (MAX(M + NS,NL) + 3NL + 2N + 5) (M + NS) + 3NL + 4N
+*----------------------------------------------------------------------
+
+      INTEGER NMAX,MMAX,NSMAX
+      PARAMETER(NMAX = 1000,MMAX = 2,NSMAX = 500)
+
+      INTEGER            N,NE
+      DOUBLE PRECISION   ERROR
+      DOUBLE PRECISION   TI(NMAX),GSTI(NMAX),GERRTI(NMAX)
+
+      INTEGER            NS
+      DOUBLE PRECISION   SMIN,SMAX
+      DOUBLE PRECISION   SJ(NSMAX), FSSJ(NSMAX)
+      DOUBLE PRECISION   FMSJ(NSMAX),FERRSJ(NSMAX)
+      DOUBLE PRECISION   HS
+
+      INTEGER            M
+      DOUBLE PRECISION   ASJ(MMAX),AERRJ(MMAX)
+
+      DOUBLE PRECISION   B(NMAX,MMAX)
+
+      INTEGER            NL
+      DOUBLE PRECISION   L(NSMAX + 2,NSMAX)
+
+      INTEGER            DISMOD,ERRMOD,POSMOD,REGMOD,REGFUN,INFMOD
+
+      INTEGER            LAMBIT
+      DOUBLE PRECISION   LAMBDA,LAMBST,LAMBSP,LAMBRA,LAMBPR,LAMBOF
+
+      INTEGER            GNIT,MINMOD,INIMOD
+      DOUBLE PRECISION   GNIN,GNPR
+
+      INTEGER            NALPHA
+      DOUBLE PRECISION   ALPHA
+
+      CHARACTER*20       IDFILE,ISFILE,IPFILE,OSFILE,OCFILE
+
+      INTEGER            IFWK(2 * (MMAX + NSMAX))
+      DOUBLE PRECISION   DPFWK((MMAX + 4 * NSMAX + 2 * NMAX + 12) *
+     *                         (MMAX + NSMAX)
+     *                         + 3 * NSMAX + 8 + 4 * NMAX)
+*----------------------------------------------------------------------
+*     CARSFR:
+*     SIZE(DPFWK) = ((N + MAX0(M + NS,NL) + 4) * (M + NS) +  N + NL)
+*
+*     CARSSC:
+*     SIZE(DPFWK) = ((MAX0(M + NS,NL) + 3 * NL + 2 * N + 5) * (M + NS)
+*                    + 3 * NL + 4 * N)
+*----------------------------------------------------------------------
+
+
+*-----START PROGRAM----------------------------------------------------
+
+      WRITE(*,*)'--------------------------------------------------'
+      WRITE(*,*)'-----------------GENEREG STARTED------------------'
+
+*-----INITIALIZATION OF FILES------------------------------------------
+
+      IPFILE = 'genereg.par'
+      IDFILE = 'genereg.dat'
+      ISFILE = 'genereg.sol'
+      OSFILE = 'genereg.sol'
+      OCFILE = 'genereg.adp'
+
+*-----READ INPUT PARAMETER AND DATA------------------------------------
+
+      CALL RDPARA(IPFILE,NS,NSMAX,SMIN,SMAX,M,MMAX,N,NMAX,NE,
+     *            ERROR,LAMBDA,DISMOD,ERRMOD,POSMOD,REGMOD,REGFUN,
+     *            INFMOD,LAMBST,LAMBSP,LAMBRA,LAMBPR,LAMBIT,LAMBOF,
+     *            GNIN,GNPR,GNIT,MINMOD,INIMOD,ALPHA,NALPHA)
+      CALL RDDATA(IDFILE,ISFILE,N,NE,TI,GSTI,GERRTI,
+     *            GNIN,INIMOD,NS,FSSJ,ERRMOD,INFMOD)
+
+*-----SETUP DISCRETE PROBLEM-------------------------------------------
+
+      CALL SEDIPR(N,NE,TI,NS,SMIN,SMAX,SJ,HS,M,B,NMAX,NL,L,NSMAX + 2,
+     *            DISMOD,REGFUN,INFMOD)
+
+*-----CALCULATE REGULARIZATION SOLUTION--------------------------------
+
+      IF (REGMOD.EQ.1) THEN
+       CALL CARSFR(N,NE,TI,GSTI,GERRTI,M,ASJ,AERRJ,NS,SJ,FSSJ,FMSJ,
+     *             FERRSJ,HS,B,NMAX,NL,L,NSMAX + 2,ERROR,LAMBDA,
+     *             POSMOD,REGFUN,INFMOD,GNIN,GNPR,GNIT,
+     *             IFWK,DPFWK,MINMOD,INIMOD,ALPHA,NALPHA,1)
+      ELSE
+       IF ((REGFUN.LE.3).OR.(MINMOD.EQ.1)) THEN
+        CALL CARSSC(N,NE,TI,GSTI,GERRTI,M,ASJ,AERRJ,NS,SJ,FSSJ,FMSJ,
+     *              FERRSJ,HS,B,NMAX,NL,L,NSMAX + 2,ERROR,LAMBDA,
+     *              ERRMOD / 10,POSMOD,REGFUN,INFMOD,
+     *              LAMBST,LAMBSP,LAMBRA,LAMBPR,LAMBIT,GNIN,GNPR,GNIT,
+     *              IFWK,DPFWK,MINMOD,INIMOD,0.D0,NALPHA)
+        IF (REGFUN.GT.3) THEN
+         WRITE(*,1001)'MAIN   > REGUL. PARAMETER (ALPHA=0)  :',LAMBDA
+         WRITE(*,1001)'MAIN   > ERROR            (ALPHA=0)  :',ERROR
+         ERRMOD = 10 + MOD(ERRMOD,10)
+         LAMBST = DLOG10( LAMBDA ) + LAMBOF
+         LAMBDA = 10**LAMBST
+         INIMOD = 1
+         CALL CARSFR(N,NE,TI,GSTI,GERRTI,M,ASJ,AERRJ,NS,SJ,FSSJ,FMSJ,
+     *               FERRSJ,HS,B,NMAX,NL,L,NSMAX + 2,ERROR,LAMBDA,
+     *               POSMOD,REGFUN,INFMOD,GNIN,GNPR,GNIT,
+     *               IFWK,DPFWK,MINMOD,INIMOD,0.D-10,NALPHA,2)
+        ENDIF
+       ENDIF
+       IF (REGFUN.GT.3) THEN
+        CALL CARSSC(N,NE,TI,GSTI,GERRTI,M,ASJ,AERRJ,NS,SJ,FSSJ,FMSJ,
+     *              FERRSJ,HS,B,NMAX,NL,L,NSMAX + 2,ERROR,LAMBDA,
+     *              ERRMOD / 10,POSMOD,REGFUN,INFMOD,
+     *              LAMBST,LAMBSP,LAMBRA,LAMBPR,LAMBIT,GNIN,GNPR,GNIT,
+     *              IFWK,DPFWK,MINMOD,INIMOD,ALPHA,NALPHA)
+       ENDIF
+      ENDIF
+
+*-----WRITE OUTPUT DATA------------------------------------------------
+
+      CALL WERESO(OSFILE,NS,SJ,FSSJ,FMSJ,FERRSJ)
+      CALL WECOAJ(OCFILE,M,ASJ,AERRJ)
+
+      WRITE(*,1001)'MAIN   > REGULARIZATION PARAMETER    :',LAMBDA
+      WRITE(*,1001)'MAIN   > ERROR                       :',ERROR
+      WRITE(*,*)'------------------GENEREG ENDED-------------------'
+      WRITE(*,*)'--------------------------------------------------'
+
+      STOP
+
+ 1001 FORMAT(1X,A38,D18.8)
+
+      END
+
+*----------------------------------------------------------------------
+* SUBROUTINE: CA(LCULATE) K1
+*
+* PURPOSE   : CALCULATE VALUES FOR THE NONLINEAR OPERATOR K1
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             FSSJ   : VALUES OF THE CALCULATED SOLUTION
+*             HS     : INTEGRATION CONSTANT
+*
+*             (ON OUTPUT)
+*             K1     : VALUES OF THE NONLINEAR OPERATOR K1 AT T1,...,TN
+*----------------------------------------------------------------------
+
+      SUBROUTINE CAK1(N,TI,K1,NS,SJ,FSSJ,HS)
+
+      INTEGER N
+      DOUBLE PRECISION TI(N)
+      DOUBLE PRECISION K1(N)
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS),FSSJ(NS)
+      DOUBLE PRECISION HS
+
+      INTEGER I,J
+
+      DOUBLE PRECISION DPWK
+
+      DO 20 I = 1,N
+       K1(I) = 0.D0
+       DO 10 J = 1,NS
+        DPWK = TI(I) * SJ(J)
+        DPWK = DPWK * DPWK
+        DPWK = DPWK / (1.D0 + DPWK)
+         K1(I) = K1(I) + DPWK * 10.D0**FSSJ(J)
+ 10    CONTINUE
+       K1(I) =  K1(I) * HS
+ 20   CONTINUE
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: CA(LCULATE) DK1
+*
+* PURPOSE   : CALCULATE DERIVATIVE OF K1(I) WITH RESPECT TO FSSJ(J)
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*
+*             NDKMAX : LEADING DIMENSION OF THE FIELD DK1
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             FSSJ   : VALUES OF THE CALCULATED SOLUTION
+*             HS     : INTEGRATION CONSTANT
+*
+*             (ON OUTPUT)
+*             DK1    : DERIVATIVE OF K1(I) WITH RESPECT TO FSSJ(J)
+*----------------------------------------------------------------------
+
+      SUBROUTINE CADK1(N,TI,DK1,NDKMAX,NS,SJ,FSSJ,HS)
+
+      INTEGER N
+      DOUBLE PRECISION TI(N)
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS),FSSJ(NS)
+      DOUBLE PRECISION HS
+
+      INTEGER NDKMAX
+      DOUBLE PRECISION DK1(NDKMAX,NS)
+
+      INTEGER I,J
+
+      DOUBLE PRECISION DPWK
+
+      DO 10 I = 1,N
+       DO 10 J = 1,NS
+        DPWK = TI(I) * SJ(J)
+        DPWK = DPWK * DPWK
+         DPWK = DPWK / (1.D0 + DPWK) * 10.d0**FSSJ(J)
+         DK1(I,J) =  DPWK * HS * DLOG(10.D0)
+ 10   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* FUNCTION  : BTIJ1
+*
+* PURPOSE   : CALCULATE VALUE OF THE ADDITIONAL LINEAR TERM 1,J
+*
+* VARIABLES : (ON INPUT)
+*             T      : ARGUMENT OF THE ADDITIONAL LINEAR TERM
+*             J      : NUMBER OF THE ADDITIONAL LINEAR TERM
+*
+*             (ON OUTPUT)
+*             BTIJ1  : CALCULATED VALUE OF THE ADD. LINEAR TERM 1,J
+*----------------------------------------------------------------------
+
+      DOUBLE PRECISION FUNCTION BTIJ1(T,J)
+
+      DOUBLE PRECISION T
+
+      INTEGER J
+
+      CHARACTER*60 ERRTXT
+
+      IF (J.EQ.1) THEN
+       BTIJ1 = 1.D0
+      ELSE IF (J.EQ.2) THEN
+       BTIJ1 = 0.D0
+      ELSE
+       ERRTXT = ' BTIJ1  > FUNCTION NOT DEFINED'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: CA(LCULATE) K2
+*
+* PURPOSE   : CALCULATE VALUES FOR THE NONLINEAR OPERATOR K2
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             FSSJ   : VALUES OF THE CALCULATED SOLUTION
+*             HS     : INTEGRATION CONSTANT
+*
+*             (ON OUTPUT)
+*             K2     : VALUES OF THE NONLINEAR OPERATOR K2 AT T1,...,TN
+*----------------------------------------------------------------------
+
+      SUBROUTINE CAK2(N,TI,K2,NS,SJ,FSSJ,HS)
+
+      INTEGER N
+      DOUBLE PRECISION TI(N)
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS),FSSJ(NS)
+
+      DOUBLE PRECISION HS
+
+      DOUBLE PRECISION K2(N)
+
+      INTEGER I,J
+
+      DOUBLE PRECISION DPWK
+
+      DO 20 I = 1,N
+      K2(I) = 0.D0
+       DO 10 J = 1,NS
+        DPWK = TI(I) * SJ(J)
+        DPWK = DPWK / (1.D0 + DPWK * DPWK)
+         K2(I) = K2(I) + DPWK * 10.D0**FSSJ(J)
+ 10    CONTINUE
+       K2(I) = K2(I) * HS
+ 20   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: CA(LCULATE) DK2
+*
+* PURPOSE   : CALCULATE DERIVATIVE OF K2(I) WITH RESPECT TO FSSJ(J)
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*
+*             NDKMAX : LEADING DIMENSION OF THE FIELD DK2
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             FSSJ   : VALUES OF THE CALCULATED SOLUTION
+*             HS     : INTEGRATION CONSTANT
+*
+*             (ON OUTPUT)
+*             DK2    : DERIVATIVE OF K2(I) WITH RESPECT TO FSSJ(J)
+*----------------------------------------------------------------------
+
+      SUBROUTINE CADK2(N,TI,DK2,NDKMAX,NS,SJ,FSSJ,HS)
+
+      INTEGER N
+      DOUBLE PRECISION TI(N)
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS),FSSJ(NS)
+
+      DOUBLE PRECISION HS
+
+      INTEGER NDKMAX
+      DOUBLE PRECISION DK2(NDKMAX,NS)
+
+      INTEGER I,J
+
+      DOUBLE PRECISION DPWK
+
+      DO 10 I = 1,N
+       DO 10 J = 1,NS
+        DPWK = TI(I) * SJ(J)
+        DPWK = DPWK / (1.D0 + DPWK * DPWK) * 10.D0**FSSJ(J)
+        DK2(I,J) = DPWK * HS * DLOG(10.D0)
+ 10   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* FUNCTION  : BTIJ2
+*
+* PURPOSE   : CALCULATE VALUE OF THE ADDITIONAL LINEAR TERM 2,J
+*
+* VARIABLES : (ON INPUT)
+*             T      : ARGUMENT OF THE ADDITIONAL LINEAR TERM
+*             J      : NUMBER OF THE ADDITIONAL LINEAR TERM
+*
+*             (ON OUTPUT)
+*             BTIJ2  : CALCULATED VALUE OF THE ADD. LINEAR TERM 2,J
+*----------------------------------------------------------------------
+
+      DOUBLE PRECISION FUNCTION BTIJ2(T,J)
+
+      DOUBLE PRECISION T
+
+      INTEGER J
+
+      CHARACTER*60 ERRTXT
+
+      IF (J.EQ.1) THEN
+       BTIJ2 = 0.D0
+      ELSE IF (J.EQ.2) THEN
+       BTIJ2 = 1.D0 / T
+      ELSE
+       ERRTXT = ' BTIJ2  > FUNCTION NOT DEFINED'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: CA(LCULATE) (R)EGULARIZATION (O)PERATOR
+*
+* PURPOSE   : CALCULATE VALUES FOR THE NONLINEAR REGUL. OPERATOR RO
+*
+* VARIABLES : (ON INPUT)
+*             NRO    : NUMBER OF POINTS WHERE THE REGULARIZATION 
+*                      OPERATOR RO IS CALCULATED
+*             FSSJ   : VALUES OF THE CALCULATED SOLUTION
+*             HS     : INTEGRATION CONSTANT
+*             ALPHA  : PARAMETER FOR NONLINEAR REGULARIZATION OPERATOR
+*
+*             (ON OUTPUT)
+*             RO     : VALUES OF THE NONLINEAR OPERATOR RO
+*----------------------------------------------------------------------
+
+      SUBROUTINE CARO(RO,NRO,FSSJ,HS,ALPHA)
+
+      DOUBLE PRECISION RO(*)
+      INTEGER NRO
+      DOUBLE PRECISION FSSJ(*)
+      DOUBLE PRECISION HS
+      DOUBLE PRECISION ALPHA
+
+      INTEGER I
+
+      DOUBLE PRECISION DPWK, FACTOR, DISFAC, ALPHA2
+
+      DISFAC  =  (HS * HS)
+      ALPHA2  =  (ALPHA * ALPHA) / (DISFAC * DISFAC)
+      FACTOR  =  DSQRT(HS) / DISFAC
+      IF (ALPHA.GT.(1.D-10)) THEN
+        DO 10 I = 1,NRO
+          DPWK  = ( FSSJ(I+2) - 2.D0*FSSJ(I+1) + FSSJ(I) )
+          RO(I) = DPWK * FACTOR / ( 1.D0 + DPWK*DPWK*ALPHA2 )**0.25D0
+ 10     CONTINUE
+      ELSE
+        DO 20 I = 1,NRO
+          RO(I) = ( FSSJ(I+2) - 2.D0*FSSJ(I+1) + FSSJ(I) ) * FACTOR
+ 20     CONTINUE
+      ENDIF
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: CA(LCULATE) D (R)EGULARIZATION (O)PERATOR
+*
+* PURPOSE   : CALCULATE DERIVATIVE OF RO(I) WITH RESPECT TO FSSJ(J)
+*
+* VARIABLES : (ON INPUT)
+*             NDOMAX : LEADING DIMENSION OF THE FIELD DRO
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             FSSJ   : VALUES OF THE CALCULATED SOLUTION
+*             HS     : INTEGRATION CONSTANT
+*             ALPHA  : PARAMETER FOR NONLINEAR REGULARIZATION TERM
+*
+*             (ON OUTPUT)
+*             NRO    : NUMBER OF POINTS OF RO
+*             DRO    : DERIVATIVE OF RO(I) WITH RESPECT TO FSSJ(J)
+*----------------------------------------------------------------------
+
+      SUBROUTINE CADRO(DRO,NDOMAX,NRO,NS,FSSJ,HS,ALPHA)
+
+      INTEGER NRO,NS
+      DOUBLE PRECISION FSSJ(NS)
+      DOUBLE PRECISION HS
+      DOUBLE PRECISION ALPHA
+      INTEGER NDOMAX
+      DOUBLE PRECISION DRO(NDOMAX,NS)
+
+      INTEGER I,J
+      DOUBLE PRECISION DPWK,DISFAC,FACTOR,ALPHA2
+
+      NRO=NS-2
+
+      DO 10 I = 1,NRO
+       DO 10 J = 1,NS
+        DRO(I,J) = 0.D0
+ 10   CONTINUE
+
+      DISFAC  =  (HS * HS)
+      ALPHA2  =  (ALPHA * ALPHA) / (DISFAC * DISFAC)
+      FACTOR  =  DSQRT(HS) / DISFAC
+      IF (ALPHA.GT.(1.D-10)) THEN
+        DO 20 I = 1,NRO
+          DPWK  =  ( FSSJ(I+2) - 2.D0*FSSJ(I+1) + FSSJ(I) )
+          DPWK  =  FACTOR*( 1.D0 + 0.5D0*DPWK*DPWK * ALPHA2) /
+     *             ( 1.D0 + DPWK*DPWK * ALPHA2 )**1.25D0 
+          DRO(I,I)     = DPWK
+          DRO(I,I + 2) = DPWK
+          DRO(I,I + 1) = -2.D0 * DPWK
+ 20     CONTINUE
+      ELSE
+        DO 30 I = 1,NRO
+          DRO(I,I)     = FACTOR
+          DRO(I,I + 2) = FACTOR
+          DRO(I,I + 1) = -2.D0 * FACTOR
+ 30     CONTINUE
+      ENDIF
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: SE(TUP) DI(SCRETE) PR(OBLEM)
+*
+* PURPOSE   : SETUP VALUES FOR THE DISCRETE REGULARIZATION PROBLEM AS
+*             NEEDED BY THE SUBROUTINE CARSSC AND CARSFR
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             NE     : NUMBER OF DIFFERENT EQUATIONS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SMIN,
+*             SMAX   : INTERVAL IN WHICH THE SOLUTION IS CALCULATED
+*
+*             M      : NUMBER OF COEFFICIENTS AJ
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*             NLMAX  : LEADING DIMENSION OF THE FIELD L
+*
+*             DISMOD : MODE FOR DISCRETIZATION OF THE INTEGRALS
+*             REGFUN : MODE FOR REGULARIZATION FUNCTIONAL
+*             INFMOD : MODE FOR OUTPUT OF ADDITIONAL INFORMATION
+*
+*             (ON OUTPUT)
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             HS     : INTEGRATION CONSTANT
+*
+*             B      : ADDITIONAL LINEAR TERMS
+*
+*             NL     : FIRST DIMENSION OF THE REGULARIZATION OPERATOR
+*             L      : APPROXIMATED REGULARIZATION OPERATOR
+*----------------------------------------------------------------------
+
+      SUBROUTINE SEDIPR(N,NE,TI,NS,SMIN,SMAX,SJ,HS,M,B,NBMAX,NL,L,
+     *                  NLMAX,DISMOD,REGFUN,INFMOD)
+
+      INTEGER N,NE
+      DOUBLE PRECISION TI(N)
+
+      INTEGER NS
+      DOUBLE PRECISION SMIN,SMAX
+      DOUBLE PRECISION SJ(NS)
+      DOUBLE PRECISION HS
+
+      INTEGER M
+
+      INTEGER NBMAX
+      DOUBLE PRECISION B(NBMAX,M)
+
+      INTEGER NL,NLMAX
+      DOUBLE PRECISION L(NLMAX,NS)
+
+      INTEGER DISMOD,REGFUN,INFMOD
+
+      DOUBLE PRECISION BTIJ1,BTIJ2
+
+      INTEGER I,J
+
+      INTEGER IWK
+      DOUBLE PRECISION DPWK
+
+*-----WRITE SUBROUTINE INFO--------------------------------------------
+
+      IF (INFMOD.GE.2) THEN
+       WRITE(*,*)' SEDIPR > CALLED'
+      ENDIF
+
+*-----CALCULATE ABSIZZES WHERE THE SOLUTION IS CALCULATED--------------
+
+      IF (DISMOD.EQ.1) THEN
+       HS = (SMAX - SMIN) / (NS - 1)
+       SJ(1) = SMIN
+       DO 10 I = 2,NS
+        SJ(I) = SJ(I - 1) + HS
+ 10    CONTINUE
+      ELSE 
+       HS = (SMAX / SMIN)**(1.D0 / DBLE(NS - 1))
+       SJ(1) = SMIN
+       DO 20 I = 2,NS
+        SJ(I) = SJ(I - 1) * HS
+ 20    CONTINUE
+       HS = DLOG(HS)
+      ENDIF
+
+*-----SETUP MATRIX FOR THE ADDITIONAL LINEAR TERMS---------------------
+
+      IF (M.GT.0) THEN
+       DO 30 I = 1,(N / NE)
+        DO 30 J = 1,M
+         B(I,J) = BTIJ1(TI(I),J)
+ 30    CONTINUE
+       IF (NE.EQ.2) THEN
+        DO 40 I = 1,(N / 2)
+         IWK = I + (N / 2)
+         DO 40 J = 1,M
+          B(IWK,J) = BTIJ2(TI(I),J)
+ 40     CONTINUE
+       ENDIF
+      ENDIF
+
+*-----SETUP MATRIX FOR THE APPROXIMATED REGULARIZATION OPERATOR--------
+
+      DO 50 I = 1,NLMAX
+       DO 50 J = 1,NS
+        L(I,J) = 0.D0
+ 50   CONTINUE
+
+      IF (MOD(REGFUN,10).EQ.1) THEN
+       NL = NS
+       DPWK = DSQRT(HS)
+       DO 60 I = 1,NL
+        L(I,I) = DPWK
+ 60    CONTINUE
+      ELSE IF (MOD(REGFUN,10).EQ.2) THEN
+       NL = NS - 2
+       DPWK = DSQRT(HS) / HS**2
+       DO 70 I = 1,NL
+        L(I,I) = DPWK
+        L(I,I + 2) = DPWK
+        L(I,I + 1) = -2.D0 * DPWK
+ 70    CONTINUE
+      ELSE IF (MOD(REGFUN,10).EQ.3) THEN
+       NL = NS + 2
+       DPWK = DSQRT(HS) / HS**2
+       DO 80 I = 3,NL - 2
+        L(I,I) = DPWK
+        L(I,I - 2) = DPWK
+        L(I,I - 1) = -2.D0 * DPWK
+ 80    CONTINUE
+       L(1,1) = DPWK
+       L(2,1) = -2.D0 * DPWK
+       L(2,2) = DPWK
+       L(NL - 1,NL - 3) = DPWK
+       L(NL - 1,NL - 2) = -2.D0 * DPWK
+       L(NL,NL - 2) = DPWK
+      ELSE
+       CALL CADRO(L,NLMAX,NL,NS,SJ,HS,0.D0)
+      ENDIF
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: R(EA)D PARA(METER)
+*
+* PURPOSE   : READ PARAMETER FROM INPUT FILE #10
+*
+* VARIABLES : (ON INPUT)
+*             IPFILE : NAME OF INPUT PARAMETER FILE
+*             NSMAX  : MAXIMUM NUMBER OF POINTS WHERE THE SOLUTION
+*                      CAN BE CALCULATED
+*             MMAX   : MAXIMUM NUMBER OF COEFFICIENTS AJ
+*             NMAX   : MAXIMUM NUMBER OF DATA POINTS
+*
+*             (ON OUTPUT)
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SMIN,
+*             SMAX   : INTERVAL IN WHICH THE SOLUTION IS CALCULATED
+*
+*             M      : NUMBER OF COEFFICIENTS AJ
+*             N      : NUMBER OF DATA POINTS
+*             NE     : NUMBER OF DIFFERENT EQUATIONS
+*
+*             ERROR  : SCALEFACTOR OF THE ERROR
+*             LAMBDA : REGULARIZATION PARAMETER
+*
+*             DISMOD : MODE FOR DISCRETIZATION OF THE INTEGRALS
+*             ERRMOD : MODE FOR ESTIMATION OF THE ERROR
+*             POSMOD : MODE FOR POSITIVITY CONSTRAINT
+*             REGMOD : MODE FOR CALCULATION OF THE SOLUTION
+*             REGFUN : MODE FOR REGULARIZATION FUNCTIONAL
+*             INFMOD : MODE FOR OUTPUT OF ADDITIONAL INFORMATION
+*
+*             LAMB?? : PARAMETER FOR THE CALCULATION OF LAMBDA
+*             GN??   : PARAMETER FOR MINIMIZATION
+*             MINMOD : PARAMETER FOR MINIMIZATION (GNC METHOD)
+*             ALPHA  : PARAMETER FOR NONLINEAR REGULARIZATION TERM
+*             NALPHA : NUMBER OF GNC STEPS
+*             INIMOD : PARAMETER FOR INITIAL VALUES
+*----------------------------------------------------------------------
+
+      SUBROUTINE RDPARA(IPFILE,NS,NSMAX,SMIN,SMAX,M,MMAX,N,NMAX,NE,
+     *                  ERROR,LAMBDA,DISMOD,ERRMOD,POSMOD,REGMOD,
+     *                  REGFUN,INFMOD,LAMBST,LAMBSP,LAMBRA,LAMBPR,
+     *                  LAMBIT,LAMBOF,GNIN,GNPR,GNIT,MINMOD,INIMOD,
+     *                  ALPHA,NALPHA)
+
+      INTEGER          NS,NSMAX
+      DOUBLE PRECISION SMIN,SMAX
+
+      INTEGER          M,MMAX
+      INTEGER          N,NMAX
+      INTEGER          NE 
+
+      DOUBLE PRECISION ERROR,LAMBDA
+
+      INTEGER          DISMOD,ERRMOD,POSMOD,REGMOD,REGFUN,INFMOD
+
+      INTEGER          LAMBIT
+      DOUBLE PRECISION LAMBST,LAMBSP,LAMBRA,LAMBPR,LAMBOF
+
+      INTEGER          GNIT,MINMOD,INIMOD
+      DOUBLE PRECISION GNIN,GNPR
+
+      INTEGER          NALPHA
+      DOUBLE PRECISION ALPHA
+
+      CHARACTER*20     IPFILE
+
+      INTEGER          IWK
+
+      CHARACTER*60 ERRTXT
+
+*-----READ INPUT PARAMETER FROM FILE-----------------------------------
+
+      OPEN(UNIT=10,FILE=IPFILE,STATUS='OLD')
+
+      READ(10,*)NS
+      READ(10,*)SMIN
+      READ(10,*)SMAX
+      READ(10,*)DISMOD
+      READ(10,*)M
+      READ(10,*)N
+      READ(10,*)NE
+      READ(10,*)ERRMOD
+      READ(10,*)ERROR
+      READ(10,*)IWK
+      POSMOD = (IWK / 100)
+      REGMOD = MOD(IWK / 10,10)
+      REGFUN = MOD(IWK,10)
+      READ(10,*)LAMBDA
+      READ(10,*)INFMOD
+      READ(10,*)LAMBST
+      READ(10,*)LAMBSP
+      READ(10,*)LAMBRA
+      READ(10,*)LAMBPR
+      READ(10,*)LAMBIT
+      READ(10,*)GNIN
+      READ(10,*)GNPR
+      READ(10,*)GNIT
+      READ(10,*)IWK
+      MINMOD = (IWK / 10)
+      IF (REGFUN.LE.3) THEN
+        MINMOD = 0
+      ENDIF
+      INIMOD = MOD(IWK,10)
+      READ(10,*)ALPHA
+      READ(10,*)LAMBOF
+      IF (MINMOD.EQ.2) THEN
+        READ(10,*)NALPHA
+      ELSE
+        NALPHA = 0
+      ENDIF
+
+      CLOSE(10)
+
+*-----WRITE SUBROUTINE INFO--------------------------------------------
+
+      IF (INFMOD.GE.2) THEN
+       WRITE(*,*)' RDPARA > CALLED'
+      ENDIF
+
+*-----TEST INPUT PARAMETER FOR CORRECTNESS-----------------------------
+
+      IF (NS.GT.NSMAX) THEN
+       ERRTXT = ' RDPARA > NUMBER OF GRIDPOINTS TOO LARGE (NS)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (NS.LT.2) THEN
+       ERRTXT = ' RDPARA > ILLEGAL NUMBER OF GRIDPOINTS (NS)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (SMIN.GE.SMAX) THEN
+       ERRTXT = ' RDPARA > NO INTERVAL DEFINED (SMIN<SMAX)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF ((DISMOD.NE.1).AND.(DISMOD.NE.2)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL DISCRETIZATION MODE (DISMOD)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (M.GT.MMAX) THEN
+       ERRTXT = ' RDPARA > NUMBER OF COEFFICIENTS AJ TOO LARGE (M)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (M.LT.0) THEN
+       ERRTXT = ' RDPARA > ILLEGAL NUMBER OF COEFFICIENTS AJ (M)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (N.GT.NMAX) THEN
+       ERRTXT = ' RDPARA > NUMBER OF DATA POINTS TOO LARGE (N)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (N.LE.(M + 2)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL NUMBER OF DATA POINTS (N)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (MOD(N,NE).NE.0) THEN
+       ERRTXT = ' RDPARA > WRONG NUMBER OF DATA POINTS (N)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+      
+      IF ((NE.LT.1).OR.(NE.GT.2)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL NUMBER OF DIFFERENT DATA SETS (NE)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF ((MOD(ERRMOD,10).LT.1).OR.(MOD(ERRMOD,10).GT.3).OR.
+     *    ((ERRMOD / 10).LT.1).OR.((ERRMOD / 10).GT.2)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL ERROR MODE (ERRMOD)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (((ERRMOD / 10).EQ.1).AND.(ERROR.LE.0.D0)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL ESTIMATE OF THE ERROR (ERROR)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF ((POSMOD.LT.1).OR.(POSMOD.GT.2)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL REGULARIZATION MODE (REGMOD/POSMOD)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF ((REGMOD.LT.1).OR.(REGMOD.GT.2)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL REGULARIZATION MODE (REGMOD/REGMOD)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF ((REGFUN.LT.1).OR.(REGFUN.GT.4)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL REGULARIZATION MODE (REGMOD/REGFUN)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF ((REGMOD.EQ.1).AND.(LAMBDA.LT.0.D0)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL VALUE (LAMBDA)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF ((INFMOD.LT.1).OR.(INFMOD.GT.5)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL INFORMATION MODE (INFMOD)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (LAMBSP.LE.0.D0) THEN
+       ERRTXT = ' RDPARA > ILLEGAL VALUE (LAMBSP)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (LAMBRA.LE.LAMBSP) THEN
+       ERRTXT = ' RDPARA > ILLEGAL VALUE (LAMBRA)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (LAMBPR.LE.0.D0) THEN
+       ERRTXT = ' RDPARA > ILLEGAL VALUE (LAMBPR)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (LAMBIT.LE.0) THEN
+       ERRTXT = ' RDPARA > ILLEGAL VALUE (LAMBIT)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF ((POSMOD.EQ.2).AND.(GNIN.LE.0.D0)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL VALUE (GNIN)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (GNPR.LE.0.D0) THEN
+       ERRTXT = ' RDPARA > ILLEGAL VALUE (GNPR)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF (GNIT.LE.0) THEN
+       ERRTXT = ' RDPARA > ILLEGAL VALUE (GNIT)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF ((MINMOD.LT.0).OR.(MINMOD.GT.2)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL REGULARIZATION MODE (MINMOD/MINMOD)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF ((INIMOD.LT.0).OR.(INIMOD.GT.1)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL REGULARIZATION MODE (MINMOD/INIMOD)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      IF ((MINMOD.EQ.2).AND.(NALPHA.LT.2)) THEN
+       ERRTXT = ' RDPARA > ILLEGAL REGULARIZATION MODE (MINMOD/NALPHA)'
+       CALL WEERRM(ERRTXT,.TRUE.)
+      ENDIF
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: R(EA)D DATA
+*
+* PURPOSE   : READ DATA POINTS FROM INPUT FILE #11
+*
+* VARIABLES : (ON INPUT)
+*             IDFILE : NAME OF INPUT DATA FILE 
+*             ISFILE : NAME OF INPUT SOLUTION FILE (INITIAL VALUES)
+*             N      : NUMBER OF DATA POINTS
+*             NE     : NUMBER OF DIFFERENT EQUATIONS
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*
+*             ERRMOD : MODE FOR THE ESTIMATION OF THE ERROR
+*             INFMOD : MODE FOR OUTPUT OF ADDITIONAL INFORMATION
+*             GNIN   : INITIAL VALUE FOR FSSJ
+*             INIMOD : PARAMETER FOR INITIAL VALUES FOR FSSJ
+*
+*             (ON OUTPUT)
+*             TI     : ABSZISSES OF THE DATA POINTS
+*             GSTI   : ORDINATE OF THE DATA POINTS
+*             GERRTI : ERROR OF THE DATA POINTS
+*             FSSJ   : INITIAL VALUES FOR FSSJ
+*----------------------------------------------------------------------
+
+      SUBROUTINE RDDATA(IDFILE,ISFILE,N,NE,TI,GSTI,GERRTI,
+     *                  GNIN,INIMOD,NS,FSSJ,ERRMOD,INFMOD)
+
+      INTEGER          N,NE,NS
+      DOUBLE PRECISION TI(N),GSTI(N),GERRTI(N),FSSJ(NS)
+
+      INTEGER          INIMOD
+      DOUBLE PRECISION GNIN
+
+      INTEGER          ERRMOD,INFMOD
+
+      CHARACTER*20     IDFILE,ISFILE
+
+      INTEGER I,J
+
+      INTEGER IWK
+      DOUBLE PRECISION DPWK
+
+*-----WRITE SUBROUTINE INFO--------------------------------------------
+
+      IF (INFMOD.GE.2) THEN
+       WRITE(*,*)' RDDATA > CALLED'
+      ENDIF
+
+*-----FIRST GUESS FOR FSSJ --------------------------------------------
+
+      IF (MOD(INIMOD,10).EQ.1) THEN
+
+       OPEN(UNIT=14,FILE=ISFILE,STATUS='OLD')
+       DO 10 J=1, NS
+         READ(14,*)DPWK,FSSJ(J)
+ 10    CONTINUE
+       CLOSE(14)
+
+      ELSE
+
+       DO 20 J=1, NS
+         FSSJ(J) = GNIN
+ 20    CONTINUE
+
+      ENDIF
+
+*-----READ DATA POINTS FROM FILE---------------------------------------
+
+      OPEN(UNIT=11,FILE=IDFILE,STATUS='OLD')
+
+      IF (NE.EQ.1) THEN
+
+       DO 30 I = 1,N
+        IF (MOD(ERRMOD,10).EQ.1) THEN
+         READ(11,*)TI(I),GSTI(I),GERRTI(I)
+        ELSE IF (MOD(ERRMOD,10).EQ.2) THEN
+         READ(11,*)TI(I),GSTI(I)
+         GERRTI(I) = 1.D0
+        ELSE IF (MOD(ERRMOD,10).EQ.3) THEN
+         READ(11,*)TI(I),GSTI(I)
+         IF (GSTI(I).GT.1.D-10) THEN
+           GERRTI(I) = GSTI(I)
+         ELSE
+           GERRTI(I) = 1.D-10
+         ENDIF
+        ENDIF
+ 30    CONTINUE
+
+      ELSE
+
+       DO 40 I = 1,(N / 2)
+        IWK = I + (N / 2)
+        IF (MOD(ERRMOD,10).EQ.1) THEN
+         READ(11,*)TI(I),GSTI(I),GERRTI(I),GSTI(IWK),GERRTI(IWK)
+        ELSE IF (MOD(ERRMOD,10).EQ.2) THEN
+         READ(11,*)TI(I),GSTI(I),GSTI(IWK)
+         GERRTI(I) = 1.D0
+         GERRTI(IWK) = 1.D0
+        ELSE IF (MOD(ERRMOD,10).EQ.3) THEN
+         READ(11,*)TI(I),GSTI(I),GSTI(IWK)
+         IF (GSTI(I).GT.1.D-10) THEN
+           GERRTI(I) = GSTI(I)
+         ELSE
+           GERRTI(I) = 1.D-10
+         ENDIF
+         IF (GSTI(IWK).GT.1.D-10) THEN
+           GERRTI(IWK) = GSTI(IWK)
+         ELSE
+           GERRTI(IWK) = 1.D-10
+         ENDIF
+        ENDIF
+ 40    CONTINUE
+
+      ENDIF
+
+      CLOSE(11)
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: W(RIT)E RE(GULARIZATION) SO(LUTION)
+*
+* PURPOSE   : WRITE REGULARIZATION SOLUTION TO FILE #12
+*
+* VARIABLES : (ON INPUT)
+*             OSFILE : NAME OF OUTPUT FILE FOR REGULARIZATION SOLUTION
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             FSSJ   : VALUES OF THE CALCULATED SOLUTION
+*             FMSJ   : MIDPOINT FOR THE ERRORS OF THE CALCULATED SOL.
+*             FERRSJ : ERRORS OF THE CALCULATED SOLUTION
+*----------------------------------------------------------------------
+
+      SUBROUTINE WERESO(OSFILE,NS,SJ,FSSJ,FMSJ,FERRSJ)
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS),FSSJ(NS),FMSJ(NS),FERRSJ(NS)
+      CHARACTER*20 OSFILE
+
+      INTEGER I
+
+      OPEN(UNIT=12,FILE=OSFILE,STATUS='UNKNOWN')
+
+      DO 10 I = 1,NS
+       WRITE(12,1001)SJ(I),FSSJ(I),FMSJ(I),FERRSJ(I)
+ 10   CONTINUE
+
+      CLOSE(12)
+
+      RETURN
+
+ 1001 FORMAT(4E18.8)
+
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: W(RIT)E CO(EFFICIENTS) AJ
+*
+* PURPOSE   : WRITE COEFFICIENTS AJ ON FILE #13
+*
+* VARIABLES : (ON INPUT)
+*             OCFILE : NAME OF OUTPUT FILE FOR COEFFICIENTS AJ
+*             M      : NUMBER OF COEFFICIENTS AJ
+*             ASJ    : VALUES OF THE CALCULATED COEFFICIENTS AJ
+*             AERRJ  : ERRORS OF THE CALCULATED COEFFICIENTS AJ
+*----------------------------------------------------------------------
+
+      SUBROUTINE WECOAJ(OCFILE,M,ASJ,AERRJ)
+
+      INTEGER M
+      DOUBLE PRECISION ASJ(M),AERRJ(M)
+      CHARACTER*20 OCFILE
+
+      INTEGER I
+
+      IF (M.GT.0) THEN
+       OPEN(UNIT=13,FILE=OCFILE,STATUS='UNKNOWN') 
+
+       DO 10 I = 1,M
+        WRITE(13,1001)I,ASJ(I),AERRJ(I)
+ 10    CONTINUE
+
+       CLOSE(13)
+
+      ENDIF
+
+      RETURN
+
+ 1001 FORMAT(I5,2E18.8)
+
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: CA(LCULATE) R(EGULARIZATION) S(OLUTION WITH) SC(-METHOD)
+*
+* PURPOSE   : SOLVE DISCRETE REGULARIZATION PROBLEM
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             NE     : NUMBER OF DIFFERENT EQUATIONS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*             GSTI   : ORDINATE OF THE DATA POINTS
+*             GERRTI : ERROR OF THE DATA POINTS
+*
+*             M      : NUMBER OF COEFFICIENTS AJ
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             HS     : INTEGRATION CONSTANT
+*
+*             B      : ADDITIONAL LINEAR TERMS
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*
+*             NL     : FIRST DIMENSION OF THE REGULARIZATION OPERATOR
+*             L      : APPROXIMATED REGULARIZATION OPERATOR
+*             NLMAX  : LEADING DIMENSION OF THE FIELD L
+*
+*             ERROR  : SCALEFACTOR OF THE ERROR
+*
+*             SCLMOD : MODE FOR ESTIMATION OF THE ERROR
+*             POSMOD : MODE FOR CALCULATION OF A POSITIVE SOLUTION
+*             INFMOD : MODE FOR OUTPUT OF ADDITIONAL INFORMATION
+*             REGFUN : NUMBER OF REGULARIZATION FUNCTIONAL
+*
+*             LAMB?? : PARAMETER FOR CALCULATION OF LAMBDA
+*
+*             GN??   : PARAMETER FOR MINIMIZATION
+*             MINMOD : PARAMETER FOR MINIMIZATION (GNC METHOD)
+*             ALPHA  : PARAMETER FOR NONLINEAR REGULARIZATION TERM
+*             NALPHA : NUMBER OF GNC STEPS
+*             INIMOD : PARAMETER FOR INITIAL VALUES FOR FSSJ
+*             FSSJ   : INITIAL VALUES FOR FSSJ
+*
+*             IFWK   : INTEGER WORKSPACE
+*             DPFWK  : DOUBLE PRECISION WORKSPACE
+*
+*             (ON OUTPUT)
+*             ASJ    : VALUES OF THE CALCULATED COEFFICIENTS AJ
+*             AERRJ  : ERRORS OF THE CALCULATED COEFFICIENTS AJ
+*
+*             FSSJ   : VALUES OF THE CALCULATED SOLUTION
+*             FMSJ   : MIDPOINT FOR THE ERRORS OF THE CALCULATED SOL.
+*             FERRSJ : ERRORS OF THE CALCULATED SOLUTION
+*
+*             ERROR  : SCALEFACTOR OF THE ERROR OBTAINED BY SC-METHOD
+*             LAMBDA : REGULARIZATION PARAMETER OBTAINED BY SC-METHOD
+*
+* COMMENT   : THE SIZE OF THE INTEGER WORKSPACE MUST BE AT LEAST
+*             2(M + NS)
+*
+*             THE SIZE OF THE DOUBLE PRECISION WORKSPACE MUST BE AT
+*             LEAST (N + MAX(M + NS,NL) + NL + 5)(M + NS) + 3 NL + 2 N
+*----------------------------------------------------------------------
+
+      SUBROUTINE CARSSC(N,NE,TI,GSTI,GERRTI,M,ASJ,AERRJ,NS,SJ,FSSJ,
+     *                  FMSJ,FERRSJ,HS,B,NBMAX,NL,L,NLMAX,ERROR,LAMBDA,
+     *                  SCLMOD,POSMOD,REGFUN,INFMOD,LAMBST,LAMBSP,
+     *                  LAMBRA,LAMBPR,LAMBIT,GNIN,GNPR,GNIT,
+     *                  IFWK,DPFWK,MINMOD,INIMOD,ALPHA,NALPHA)
+
+      INTEGER N,NE
+      DOUBLE PRECISION TI(N),GSTI(N),GERRTI(N)
+
+      INTEGER M
+      DOUBLE PRECISION ASJ(M),AERRJ(M)
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS),FSSJ(NS),FMSJ(NS),FERRSJ(NS)
+      DOUBLE PRECISION HS
+
+      INTEGER NBMAX
+      DOUBLE PRECISION B(NBMAX,M)
+
+      INTEGER NL,NLMAX
+      DOUBLE PRECISION L(NLMAX,NS)
+
+      DOUBLE PRECISION ERROR,LAMBDA
+
+      INTEGER SCLMOD,POSMOD,INFMOD,REGFUN
+
+      INTEGER LAMBIT
+      DOUBLE PRECISION LAMBST,LAMBSP,LAMBRA,LAMBPR
+
+      INTEGER GNIT,MINMOD,INIMOD
+      DOUBLE PRECISION GNIN,GNPR
+
+      INTEGER NALPHA
+      DOUBLE PRECISION ALPHA
+
+      INTEGER IFWK(2 * (M + NS))
+*-----DOUBLE PRECISION DPFWK((MAX0(M + NS,NL) + 3 * NL + 2 * N + 5) *--
+*-----                       (M + NS) + 3 * NL + 4 * N)----------------
+      DOUBLE PRECISION DPFWK(*)
+
+      DOUBLE PRECISION CANORM,CALAMB
+
+      INTEGER MX
+      
+      DOUBLE PRECISION BNORM,BSCALE,LSCALE
+
+      INTEGER I,J
+
+      INTEGER IWK1,IWK2,IWK3,IWK4
+
+*-----WRITE SUBROUTINE INFO--------------------------------------------
+
+      IF (INFMOD.GE.2) THEN
+       WRITE(*,*)' CARSSC > CALLED'
+      ENDIF
+
+*-----INITIALIZATION OF PARAMETERS FOR WORKSPACE MANAGEMENT------------
+
+      IWK1 = MAX0(M + NS,NL) * (M + NS) + 1
+      IWK2 = IWK1 + N * (M + NS)
+      IWK3 = IWK2 + (M + NS)
+*-----DPFWK(IWK3): DOUBLE PRECISION WORKSPACE HANDED OVER TO CALAMB----
+*-----MUST BE AT LEAST (3 * NL + N + 4) * (M + NS) + 3 * NL + 4 * N----
+
+      IWK4 = 1 + (M + NS)
+
+*-----CAL. REG. SOL. NEGLECTING POSITIVITY CONSTRAINTS-----------------
+
+      IF (M.GT.0) THEN
+       BNORM = CANORM(N,M,B,NBMAX)
+       BSCALE = 1.D0
+      ENDIF
+
+      LSCALE = 10.D0**(LAMBST / 2.D0) 
+      CALL MINREG(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,BSCALE,
+     *            NL,L,NLMAX,LSCALE,MX,IFWK(1),DPFWK(IWK2),DPFWK(1),
+     *            N + NL,1,REGFUN,2,GNIN,GNPR,GNIT,IFWK(IWK4),
+     *            DPFWK(IWK3),INFMOD,FSSJ,MINMOD,INIMOD,ALPHA,NALPHA)
+
+      LAMBDA = LAMBST
+      CALL COPVEC(MX,1.D0,DPFWK(IWK2),DPFWK(IWK3))
+      LAMBDA = CALAMB(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,
+     *                BSCALE,NL,L,NLMAX,MX,IFWK(1),DPFWK(IWK2),
+     *                DPFWK(1),N + NL,ERROR,SCLMOD,LAMBST,LAMBSP,
+     *                LAMBRA,LAMBPR,LAMBIT,GNPR,GNIT,IFWK(IWK4),
+     *                DPFWK(IWK3),INFMOD,ALPHA,NALPHA,FSSJ,REGFUN,
+     *                MINMOD,INIMOD)
+
+      IF (POSMOD.EQ.2) THEN
+
+*-----CAL. REG. SOL. WITH POSITIVITY CONSTRAINTS-----------------------
+
+       LSCALE = 10.D0**(LAMBDA / 2.D0)
+       CALL MINREG(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,BSCALE,
+     *             NL,L,NLMAX,LSCALE,MX,IFWK(1),DPFWK(IWK2),DPFWK(1),
+     *             N + NL,2,REGFUN,1,GNIN,GNPR,GNIT,IFWK(IWK4),
+     *             DPFWK(IWK3),INFMOD,FSSJ,MINMOD,0,ALPHA,NALPHA)
+
+       CALL COPVEC(MX,1.D0,DPFWK(IWK2),DPFWK(IWK3))
+       LAMBDA = CALAMB(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,
+     *                 BSCALE,NL,L,NLMAX,MX,IFWK(1),DPFWK(IWK2),
+     *                 DPFWK(1),N + NL,ERROR,1,LAMBDA,LAMBSP,
+     *                 LAMBRA,LAMBPR,LAMBIT,GNPR,GNIT,IFWK(IWK4),
+     *                 DPFWK(IWK3),INFMOD,ALPHA,NALPHA,FSSJ,REGFUN,
+     *                 MINMOD,INIMOD)
+
+      ENDIF
+
+*-----CALULATION OF THE ERRORS OF THE REGULARIZATION SOLUTION----------
+
+      LAMBDA = 10.D0**LAMBDA
+
+      LSCALE = DSQRT(LAMBDA)
+      CALL MINREG(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,BSCALE,
+     *            NL,L,NLMAX,LSCALE,MX,IFWK(1),DPFWK(IWK2),DPFWK(1),
+     *            N + NL,POSMOD,REGFUN,1,GNIN,GNPR,GNIT,IFWK(IWK4),
+     *            DPFWK(IWK3),INFMOD,FSSJ,MINMOD,0,ALPHA,NALPHA)
+
+      DO 10 I = 1,(M + NS)
+       DO 10 J = 1,I
+        DPFWK(J + (M + NS) * (I - 1)) = DPFWK(J + (N + NL) * (I - 1))
+ 10   CONTINUE
+
+      CALL DINRIO(N,NE,TI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,BSCALE,MX,
+     *            IFWK(1),DPFWK(IWK2),DPFWK(1),M + NS,DPFWK(IWK1),
+     *            N,IFWK(IWK4),DPFWK(IWK3),INFMOD,ALPHA,REGFUN)
+
+      CALL CAERMD(ERROR,N,MX,DPFWK(IWK1),N,DPFWK(IWK3),INFMOD)
+
+      CALL RERESO(MX,IFWK(1),DPFWK(IWK2),DPFWK(IWK3),BSCALE,M,ASJ,
+     *            AERRJ,NS,FSSJ,FMSJ,FERRSJ,POSMOD,INFMOD,1)
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: CA(LCULATE) R(EGULARIZED) S(OLUTION FOR) F(IXED)
+*             R(EGULARIZATION PARAMETER)
+*
+* PURPOSE   : SOLVE DISCRETE REGULARIZATION PROBLEM
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             NE     : NUMBER OF DIFFERENT EQUATIONS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*             GSTI   : ORDINATE OF THE DATA POINTS
+*             GERRTI : ERROR OF THE DATA POINTS
+*
+*             M      : NUMBER OF COEFFICIENTS AJ
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             HS     : INTEGRATION CONSTANT
+*
+*             B      : ADDITIONAL LINEAR TERMS
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*
+*             NL     : FIRST DIMENSION OF THE REG. OPERATOR
+*             L      : APPROXIMATED REGULARIZATION OPERATOR
+*             NLMAX  : LEADING DIMENSION OF THE FIELD L
+*
+*             ERROR  : SCALEFACTOR OF THE ERROR
+*             LAMBDA : REGULARIZATION PARAMETER
+*
+*             POSMOD : MODE FOR CALCULATION OF A POSITIVE SOLUTION
+*             REGFUN : NUMBER OF REGULARIZATION FUNCTIONAL
+*             ERSMOD : MODE FOR CALCULATION OF THE SOLUTION ERRORS
+*             INFMOD : MODE FOR OUTPUT OF ADDITIONAL INFORMATION
+*
+*             GN??   : PARAMETER FOR MINIMIZATION
+*             MINMOD : PARAMETER FOR MINIMIZATION (GNC METHOD)
+*             ALPHA  : PARAMETER FOR NONLINEAR REGULARIZATION TERM
+*             NALPHA : NUMBER OF GNC STEPS
+*             INIMOD : PARAMETER FOR INITIAL VALUES FOR FSSJ
+*             FSSJ   : INITIAL VALUES FOR FSSJ
+*
+*             IFWK   : INTEGER WORKSPACE
+*             DPFWK  : DOUBLE PRECISION WORKSPACE
+*
+*             (ON OUTPUT)
+*             ASJ    : VALUES OF THE CALCULATED COEFFICIENTS AJ
+*             AERRJ  : ERRORS OF THE CALCULATED COEFFICIENTS AJ
+*
+*             FSSJ   : VALUES OF THE CALCULATED SOLUTION
+*             FMSJ   : MIDPOINT FOR THE ERRORS OF THE CALCULATED SOL.
+*             FERRSJ : ERRORS OF THE CALCULATED SOLUTION
+*
+* COMMENT   : THE SIZE OF THE INTEGER WORKSPACE MUST BE AT LEAST
+*             2(M + NS)
+*
+*             THE SIZE OF THE DOUBLE PRECISION WORKSPACE MUST BE AT
+*             LEAST (M + NS) (MAX(M + NS,NL) + N + 4) + N + NL
+*----------------------------------------------------------------------
+
+      SUBROUTINE CARSFR(N,NE,TI,GSTI,GERRTI,M,ASJ,AERRJ,NS,SJ,FSSJ,
+     *                  FMSJ,FERRSJ,HS,B,NBMAX,NL,L,NLMAX,ERROR,LAMBDA,
+     *                  POSMOD,REGFUN,INFMOD,GNIN,GNPR,GNIT,IFWK,DPFWK,
+     *                  MINMOD,INIMOD,ALPHA,NALPHA,ERSMOD)
+
+      INTEGER N,NE
+      DOUBLE PRECISION TI(N),GSTI(N),GERRTI(N)
+
+      INTEGER M
+      DOUBLE PRECISION ASJ(M),AERRJ(M)
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS),FSSJ(NS),FMSJ(NS),FERRSJ(NS)
+      DOUBLE PRECISION HS
+
+      INTEGER NBMAX
+      DOUBLE PRECISION B(NBMAX,M)
+
+      INTEGER NL,NLMAX
+      DOUBLE PRECISION L(NLMAX,NS)
+
+      DOUBLE PRECISION ERROR,LAMBDA
+
+      INTEGER POSMOD,INFMOD,REGFUN,ERSMOD
+
+      INTEGER GNIT,MINMOD,INIMOD
+      DOUBLE PRECISION GNIN,GNPR
+
+      INTEGER NALPHA
+      DOUBLE PRECISION ALPHA
+
+      INTEGER IFWK(2 * (M + NS))
+*-----DOUBLE PRECISION DPFWK((N + MAX0(M + NS,NL) + 4) * (M + NS) +----
+*----*                       N + NL)-----------------------------------
+      DOUBLE PRECISION DPFWK(*)
+
+      DOUBLE PRECISION CANORM
+
+      INTEGER MX
+
+      DOUBLE PRECISION BNORM,BSCALE
+      DOUBLE PRECISION LSCALE
+
+      INTEGER I,J
+
+      INTEGER IWK1,IWK2,IWK3,IWK4
+
+*-----WRITE SUBROUTINE INFO--------------------------------------------
+
+      IF (INFMOD.GE.2) THEN
+       WRITE(*,*)' CARSFR > CALLED'
+      ENDIF
+
+*-----INITIALIZATION OF PARAMETERS FOR WORKSPACE MANAGEMENT------------
+
+      IWK1 = MAX0(M + NS,NL) * (M + NS) + 1
+      IWK2 = IWK1 + N * (M + NS)
+      IWK3 = IWK2 + (M + NS)
+
+      IWK4 = (M + NS) + 1
+
+*-----CALCULATION OF REGULARIZATION SOLUTION---------------------------
+
+      LSCALE = DSQRT(LAMBDA)
+
+      IF (M.GT.0) THEN
+       BNORM = CANORM(N,M,B,NBMAX)
+       BSCALE = 1.D0
+      ENDIF
+   
+      CALL MINREG(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,BSCALE,
+     *            NL,L,NLMAX,LSCALE,MX,IFWK(1),DPFWK(IWK2),DPFWK(1),
+     *            N + NL,POSMOD,REGFUN,2,GNIN,GNPR,GNIT,IFWK(IWK4),
+     *            DPFWK(IWK3),INFMOD,FSSJ,MINMOD,INIMOD,ALPHA,NALPHA)
+
+*-----CALULATE ERRORS OF THE REGULARIZATION SOLUTION-------------------
+
+      IF (ERSMOD.EQ.1) THEN
+
+       DO 10 I = 1,(M + NS)
+        DO 10 J = 1,I
+         DPFWK(J + (M + NS) * (I - 1)) = DPFWK(J + (N + NL) * (I - 1))
+ 10    CONTINUE
+
+       CALL DINRIO(N,NE,TI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,BSCALE,MX,
+     *             IFWK(1),DPFWK(IWK2),DPFWK(1),M + NS,DPFWK(IWK1),
+     *             N,IFWK(IWK4),DPFWK(IWK3),INFMOD,ALPHA,REGFUN)
+
+       CALL CAERMD(ERROR,N,MX,DPFWK(IWK1),N,DPFWK(IWK3),INFMOD)
+
+      ENDIF
+
+      CALL RERESO(MX,IFWK(1),DPFWK(IWK2),DPFWK(IWK3),BSCALE,M,ASJ,
+     *            AERRJ,NS,FSSJ,FMSJ,FERRSJ,POSMOD,INFMOD,ERSMOD)
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: CA(LCULATE) APP(RO)X(IMATION)
+*
+* PURPOSE   : CALCULATE APPROXIMATION OF THE DATA POINTS FOR THE
+*             REGULARIZATION SOLUTION
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             NE     : NUMBER OF DIFFERENT EQUATIONS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*
+*             M      : NUMBER OF COEFFICIENTS AJ
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             HS     : INTEGRATION CONSTANT
+*
+*             B      : ADDITIONAL LINEAR TERMS
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*             BSCALE : SCALEFACTOR FOR THE ADDITIONAL LINEAR TERMS
+*
+*             MX     : NUMBER OF FREE VARIABLES
+*             ORDER  : ORDER OF THE PARAMETER
+*             REGSOL : REGULARIZATION SOLUTION WITH MX FREE VARIABLES
+*
+*             DPFWK  : DOUBLE PRECISION WORKSPACE
+*
+*             (ON OUTPUT)
+*             GAPPX  : APPROXIMATION OF THE DATA POINTS
+*
+* COMMENT   : THE SIZE OF THE DOUBLE PRECISION WORKSPACE MUST BE AT
+*             LEAST (M + NS)
+*----------------------------------------------------------------------
+
+      SUBROUTINE CAAPPX(N,NE,TI,M,NS,SJ,HS,B,NBMAX,BSCALE,MX,ORDER,
+     *                  REGSOL,GAPPX,DPFWK)
+
+      INTEGER N,NE
+      DOUBLE PRECISION TI(N)
+
+      INTEGER M
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS)
+      DOUBLE PRECISION HS
+
+      INTEGER NBMAX
+      DOUBLE PRECISION B(NBMAX,M)
+      DOUBLE PRECISION BSCALE
+
+      INTEGER MX
+      INTEGER ORDER(M + NS)
+      DOUBLE PRECISION REGSOL(MX)
+
+      DOUBLE PRECISION GAPPX(N)
+
+      DOUBLE PRECISION DPFWK(M + NS)
+
+      INTEGER I
+
+*-----SORT AND RESCALE REGULARIZATION SOLUTION-------------------------
+
+      DO 10 I = 1,MX
+       DPFWK(ORDER(I)) = REGSOL(I)
+ 10   CONTINUE
+      DO 20 I = (MX + 1),(M + NS)
+       DPFWK(ORDER(I)) = 0.D0
+ 20   CONTINUE
+      CALL COPVEC(M,BSCALE,DPFWK,DPFWK)
+
+*-----CALCULATE APPROXIMATION------------------------------------------
+      
+      CALL CAK1(N / NE,TI,GAPPX(1),NS,SJ,DPFWK(M + 1),HS)
+      IF (NE.GT.1) THEN
+       CALL CAK2(N / NE,TI,GAPPX(N / NE + 1),NS,SJ,DPFWK(M + 1),HS)
+      ENDIF
+      CALL MVMUL(N,M,B,NBMAX,DPFWK,GAPPX,2)
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: CA(LCULATE) EPS(ILON)
+*
+* PURPOSE   : CALCULATE VECTOR EPSILON DEFINING THE OBJECTIVE FUNCTION
+*             V(LAMBDA) = (EPSILON**2)
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             NE     : NUMBER OF DIFFERENT EQUATIONS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*             GSTI   : ORDINATE OF THE DATA POINTS
+*             GERRTI : ERROR OF THE DATA POINTS
+*
+*             M      : NUMBER OF COEFFICIENTS AJ
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             HS     : INTEGRATION CONSTANT
+*
+*             B      : ADDITIONAL LINEAR TERMS
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*             BSCALE : SCALEFACTOR FOR THE ADDITIONAL LINEAR TERMS
+*
+*             NL     : FIRST DIMENSION OF THE REGULARIZATION OPERATOR
+*             L      : APPROXIMATED REGULARIZATION OPERATOR
+*             NLMAX  : LEADING DIMENSION OF THE FIELD L
+*             LSCALE : SCALEFACTOR FOR THE APPROXIMATED REG. OPERATOR
+*
+*             MX     : NUMBER OF FREE VARIABLES
+*             ORDER  : ORDER OF THE PARAMETER
+*             REGSOL : REGULARIZATION SOLUTION WITH MX FREE VARIABLES
+*             ALPHA  : PARAMETER FOR NONLINEAR REGULARIZATION TERM
+*             REGFUN : NUMBER OF REGULARIZATION FUNCTIONAL
+*
+*             DPFWK  : DOUBLE PRECISION WORKSPACE
+*
+*             (ON OUTPUT)
+*             EPS    : VECTOR EPSILON
+*
+* COMMENT   : THE SIZE OF THE DOUBLE PRECISION WORKSPACE MUST BE AT
+*             LEAST (M + NS)
+*----------------------------------------------------------------------
+
+      SUBROUTINE CAEPS(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BSCALE,
+     *                 NL,L,NLMAX,LSCALE,MX,ORDER,REGSOL,EPS,DPFWK,
+     *                 ALPHA,REGFUN)
+
+      INTEGER N,NE
+      DOUBLE PRECISION TI(N),GSTI(N),GERRTI(N)
+
+      INTEGER M
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS)
+      DOUBLE PRECISION HS
+
+      INTEGER NBMAX
+      DOUBLE PRECISION B(NBMAX,M)
+      DOUBLE PRECISION BSCALE
+
+      INTEGER NL,NLMAX
+      DOUBLE PRECISION L(NLMAX,NS)
+      DOUBLE PRECISION LSCALE
+
+      INTEGER MX
+      INTEGER ORDER(M + NS)
+      DOUBLE PRECISION REGSOL(MX)
+
+      DOUBLE PRECISION EPS(N + NL)
+      DOUBLE PRECISION ALPHA
+      INTEGER          REGFUN
+
+      DOUBLE PRECISION DPFWK(M + NS)
+
+      INTEGER I
+
+      CALL CAAPPX(N,NE,TI,M,NS,SJ,HS,B,NBMAX,BSCALE,MX,ORDER,REGSOL,
+     *            EPS,DPFWK)
+
+      DO 10 I = 1,N
+       EPS(I) = (GSTI(I) - EPS(I)) / GERRTI(I)
+ 10   CONTINUE
+
+      IF ( REGFUN.LE.3 ) THEN
+       CALL MVMUL(NL,NS,L,NLMAX,DPFWK(M + 1),EPS(N + 1),1)
+      ELSE
+       CALL CARO(EPS(N + 1),NL,DPFWK(M + 1),HS,ALPHA)
+      ENDIF 
+      CALL COPVEC(NL,-LSCALE,EPS(N + 1),EPS(N + 1))
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: CA(LCULATE) DEPS(ILON)
+*
+* PURPOSE   : CALCULATE DERIVATIVE OF EPSILON WITH RESPECT TO THE
+*             REGULARIZATION SOLUTION
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             NE     : NUMBER OF DIFFERENT EQUATIONS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*             GERRTI : ERROR OF THE DATA POINTS
+*
+*             M      : NUMBER OF COEFFICIENTS AJ
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             HS     : INTEGRATION CONSTANT
+*
+*             B      : ADDITIONAL LINEAR TERMS
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*             BNORM  : NORM OF THE MATRIX B
+*             BSCALE : SCALEFACTOR FOR THE ADDITIONAL LINEAR TERMS
+*
+*             NL     : FIRST DIMENSION OF THE REGULARIZATION OPERATOR
+*             L      : APPROXIMATED REGULARIZATION OPERATOR
+*             NLMAX  : LEADING DIMENSION OF THE FIELD L
+*             LSCALE : SCALEFACTOR FOR THE APPROXIMATED REG. OPERATOR
+*
+*             MX     : NUMBER OF FREE VARIABLES
+*             ORDER  : ORDER OF THE PARAMETER
+*             REGSOL : REGULARIZATION SOLUTION WITH MX FREE VARIABLES
+*             ALPHA  : PARAMETER FOR NONLINEAR REGULARIZATION TERM
+*             REGFUN : NUMBER OF REGULARIZATION FUNCTIONAL
+*
+*             NDEMAX : LEADING DIMENSION OF THE FIELD DEPS
+*
+*             MODUS  : MODUS OF CADEPS
+*
+*             IFWK   : INTEGER WORKSPACE
+*             DPFWK  : DOUBLE PRECISION WORKSPACE
+*
+*             (ON OUTPUT)
+*             BSCALE : NEW SCALEFACTOR FOR THE ADDITIONAL LINEAR TERMS
+*
+*             DEPS   : DERIVATIVE OF EPSILON WITH RESPECT TO THE
+*                      REGULARIZATION SOLUTION
+*
+* COMMENT   : THE SIZE OF THE INTEGER WORKSPACE MUST BE AT LEAST 
+*             (M + NS)
+*
+*             THE SIZE OF THE DOUBLE PRECISION WORKSPACE MUST BE AT
+*             LEAST (M + NS)
+*----------------------------------------------------------------------
+
+      SUBROUTINE CADEPS(N,NE,TI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,BSCALE,
+     *                  NL,L,NLMAX,LSCALE,MX,ORDER,REGSOL,DEPS,NDEMAX,
+     *                  MODUS,IFWK,DPFWK,ALPHA,REGFUN)
+
+      INTEGER N,NE
+      DOUBLE PRECISION TI(N),GERRTI(N)
+
+      INTEGER M
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS)
+      DOUBLE PRECISION HS
+
+      INTEGER NBMAX
+      DOUBLE PRECISION B(NBMAX,M)
+      DOUBLE PRECISION BNORM,BSCALE
+
+      INTEGER NL,NLMAX
+      DOUBLE PRECISION L(NLMAX,NS)
+      DOUBLE PRECISION LSCALE
+
+      INTEGER MX
+      INTEGER ORDER(M + NS)
+      DOUBLE PRECISION REGSOL(MX)
+
+      INTEGER NDEMAX
+      DOUBLE PRECISION DEPS(NDEMAX,M + NS)
+      DOUBLE PRECISION ALPHA
+
+      INTEGER MODUS,REGFUN
+
+      INTEGER IFWK(M + NS)
+      DOUBLE PRECISION DPFWK(M + NS)
+
+      DOUBLE PRECISION CANORM
+
+      INTEGER I,J
+
+      INTEGER IWK1,IWK2,IWK3
+
+*-----SORT AND RESCALE REGULARIZATINO SOLUTION-------------------------
+
+      DO 10 I = 1,MX
+       DPFWK(ORDER(I)) = REGSOL(I)
+ 10   CONTINUE
+      DO 20 I = (MX + 1),(M + NS)
+       DPFWK(ORDER(I)) = 0.D0
+ 20   CONTINUE
+      CALL COPVEC(M,BSCALE,DPFWK,DPFWK)
+
+      IWK1 = 0
+
+      IF (MOD(MODUS,10).EQ.2) THEN
+
+*-----CALCULATE FIRST PART OF DEPS-------------------------------------
+
+       CALL CADK1(N / NE,TI,DEPS(1,M + 1),NDEMAX,NS,SJ,DPFWK(M + 1),
+     *            HS)
+       IF (NE.GT.1) THEN
+        CALL CADK2(N / NE,TI,DEPS(N / NE + 1,M + 1),NDEMAX,NS,SJ,
+     *             DPFWK(M + 1),HS)
+       ENDIF
+
+       IF (M.GT.0) THEN
+
+        BSCALE = CANORM(N,NS,DEPS(1,M + 1),NDEMAX) / BNORM
+        CALL COPMAT(N,M,BSCALE,B,NBMAX,DEPS,NDEMAX)
+
+       ENDIF
+
+       DO 30 J = 1,(M + NS)
+        DO 30 I = 1,N
+         DEPS(I,J) = DEPS(I,J) / GERRTI(I)
+ 30    CONTINUE
+
+       IWK1 = IWK1 + N
+
+      ENDIF
+
+      IF ((MODUS / 10).EQ.2) THEN
+
+*-----CALCULATE SECOND PART OF DEPS------------------------------------
+
+       CALL SETMAT(NL,M,0.D0,DEPS(IWK1 + 1,1),NDEMAX)
+       IF ( REGFUN.LE.3 ) THEN
+        CALL COPMAT(NL,NS,LSCALE,L,NLMAX,DEPS(IWK1 + 1,M + 1),NDEMAX)
+       ELSE
+        CALL CADRO(DEPS(IWK1 + 1,M + 1),NDEMAX,NL,NS,DPFWK(M + 1),
+     *             HS,ALPHA)
+        CALL COPMAT(NL,NS,LSCALE,DEPS(IWK1 + 1,M + 1),NDEMAX,
+     *                           DEPS(IWK1 + 1,M + 1),NDEMAX)
+       ENDIF
+
+       IWK1 = IWK1 + NL
+
+      ENDIF
+
+*-----PERMUTE COLUMNS OF DEPS ACCORDING TO ORDER-----------------------
+
+      DO 40 I = 1,(M + NS)
+       IFWK(I) = I
+ 40   CONTINUE
+
+      DO 60 I = 1,(M + NS)
+       IWK2 = ORDER(I)
+       IWK2 = IFWK(IWK2)
+       IF (IWK2.NE.I) THEN
+        CALL SWPVEC(IWK1,DEPS(1,I),DEPS(1,IWK2))
+        IWK3 = 1
+ 50     IF (IFWK(IWK3).NE.I) THEN
+         IWK3 = IWK3 + 1
+         GOTO 50
+        ENDIF
+        IFWK(IWK3) = IWK2
+        IFWK(ORDER(I)) = I
+       ENDIF
+ 60   CONTINUE
+
+*-----SCALE VALUES FOR THE ADDITIONAL COEFFICIENTS---------------------
+
+      DO 70 I = 1,M
+       REGSOL(IFWK(I)) = DPFWK(I) / BSCALE
+ 70   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: MIN(IMIZE) REG(ULARIZATION FUNCTIONAL
+*             USING GRADUATED NON CONVEXITY METHOD WITH
+*             GAUSS NEWTON MINIMIZATION)
+*
+* PURPOSE   : CALCULATE REGULARIZATION SOLUTION BY MINIMIZATION OF THE
+*             OBJECTIVE FUNCTION V(LAMBDA)
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             NE     : NUMBER OF DIFFERENT EQUATIONS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*             GSTI   : ORDINATE OF THE DATA POINTS
+*             GERRTI : ERROR OF THE DATA POINTS
+*
+*             M      : NUMBER OF COEFFICIENTS AJ
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             HS     : INTEGRATION CONSTANT
+*
+*             B      : ADDITIONAL LINEAR TERMS
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*             BNORM  : NORM OF THE MATRIX B
+*             BSCALE : SCALEFACTOR FOR THE ADDITIONAL LINEAR TERMS
+*
+*             NL     : FIRST DIMENSION OF THE REGULARIZATION OPERATOR
+*             L      : APPROXIMATED REGULARIZATION OPERATOR
+*             NLMAX  : LEADING DIMENSION OF THE FIELD L
+*             LSCALE : SCALEFACTOR FOR THE APPROXIMATED REG. OPERATOR
+*
+*             MX     : NUMBER OF FREE VARIABLES (CHANGED IN MINREG:
+*                      SET WITH 1. RUN, CHANGED IN SUBROUTINE MIQFWC)
+*             ORDER  : ORDER OF THE PARAMETER
+*             REGSOL : ESTIMATE FOR THE REGULARIZATION SOLUTION WITH
+*                      MX FREE VARIABLES
+*
+*             NRMAX  : LEADING DIMENSION OF THE FIELD R
+*
+*             POSMOD : MODE FOR CALCULATION OF A POSITIVE SOLUTION
+*             REGFUN : NUMBER OF REGULARIZATION FUNCTIONAL
+*
+*             GNMOD  : MODE FOR INITIALIZATION OF THE MINIMIZATION
+*             GN??   : PARAMETER FOR MINIMIZATION
+*             MINMOD : PARAMETER FOR MINIMIZATION (GNC METHOD)
+*             ALPHA  : PARAMETER FOR NONLINEAR REGULARIZATION TERM
+*             NALPHA : NUMBER OF GNC STEPS
+*             INIMOD : PARAMETER FOR INITIAL VALUES FOR FSSJ
+*             FSSJ   : INITIAL VALUES FOR FSSJ
+*
+*             IFWK   : INTEGER WORKSPACE
+*             DPFWK  : DOUBLE PRECISION WORKSPACE
+*
+*             INFMOD : MODE FOR OUTPUT OF ADDITIONAL INFORMATION
+*
+*             (ON OUTPUT)
+*             BSCALE : NEW SCALEFACTOR FOR THE ADDITIONAL LINEAR TERMS
+*
+*             MX     : NUMBER OF FREE VARIABLES
+*             ORDER  : ORDER OF THE PARAMETER
+*             REGSOL : REGULARIZATION SOLUTION WITH MX FREE VARIABLES
+*
+*             R      : MATRIX FOR CALCULATION OF SOLUTION (DEPS)
+*
+* COMMENT   : THE SIZE OF THE INTEGER WORKSPACE MUST BE AT LEAST 
+*             (M + NS)
+*
+*             THE SIZE OF THE DOUBLE PRECISION WORKSPACE MUST BE AT
+*             LEAST 3 (M + NS) + N + NL
+*----------------------------------------------------------------------
+
+      SUBROUTINE MINREG(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,
+     *                  BSCALE,NL,L,NLMAX,LSCALE,MX,ORDER,REGSOL,R,
+     *                  NRMAX,POSMOD,REGFUN,GNMOD,GNIN,GNPR,GNIT,IFWK,
+     *                  DPFWK,INFMOD,FSSJ,MINMOD,INIMOD,ALPHA,NALPHA)
+
+      INTEGER N,NE
+      DOUBLE PRECISION TI(N),GSTI(N),GERRTI(N)
+
+      INTEGER M
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS), FSSJ(NS)
+      DOUBLE PRECISION HS
+
+      INTEGER NBMAX
+      DOUBLE PRECISION B(NBMAX,M)
+      DOUBLE PRECISION BNORM,BSCALE
+
+      INTEGER NL,NLMAX
+      DOUBLE PRECISION L(NLMAX,NS)
+      DOUBLE PRECISION LSCALE
+
+      INTEGER MX
+      INTEGER ORDER(M + NS)
+      DOUBLE PRECISION REGSOL(M + NS)
+
+      INTEGER NRMAX
+      DOUBLE PRECISION R(NRMAX,M + NS)
+
+      INTEGER POSMOD,REGFUN
+
+      INTEGER GNMOD,GNIT,MINMOD,INIMOD
+      DOUBLE PRECISION GNIN,GNPR
+
+      INTEGER NALPHA
+      DOUBLE PRECISION ALPHA,DALPHA,ALPHWK
+
+      INTEGER IFWK(M + NS)
+      DOUBLE PRECISION DPFWK(3 * (M + NS) + N + NL)
+
+      INTEGER INFMOD
+
+      DOUBLE PRECISION SCPROD
+
+      CHARACTER*60 ERRTXT
+
+      INTEGER NIT
+
+      DOUBLE PRECISION STEP,MIN
+
+      INTEGER I,NA
+
+      INTEGER IWK1,IWK2,IWK3
+      DOUBLE PRECISION DPWK1,DPWK2,DPWK3,DPWK4
+
+
+*-----WRITE SUBROUTINE INFO--------------------------------------------
+
+      IF (INFMOD.GE.2) THEN
+        WRITE(*,*)' MINREG  > CALLED'
+      ENDIF  
+
+*-----INITIALIZATION OF PARAMETERS FOR WORKSPACE MANAGEMENT------------
+
+      IWK1 = N + NL + 1
+      IWK2 = IWK1 + M + NS
+      IWK3 = IWK2 + M + NS
+
+*-----INITIALIZATION OF PARAMETERS FOR MINIMIZATION--------------------
+
+      IF (GNMOD.GT.1) THEN
+
+       MX = M + NS
+       DO 10 I = 1,(M + NS)
+        ORDER(I) = I
+ 10    CONTINUE
+       CALL SETVEC(M,0.D0,REGSOL)
+
+*-----INITIALIZATION OF FSSJ-------------------------------------------
+
+       IF (MOD(INIMOD,10).GE.1) THEN
+         DO 15 I = 1, NS
+           REGSOL(M + I) = FSSJ(I)
+ 15      CONTINUE
+       ELSE
+         CALL SETVEC(NS,GNIN,REGSOL(M + 1))
+       ENDIF
+
+      ENDIF
+
+*-----GNC LOOP---------------------------------------------------------
+
+      IF (MINMOD.EQ.2) THEN
+        GNPR = GNPR / 10
+        NA = 1
+        ALPHWK = 0.D0
+        DALPHA = ALPHA / (NALPHA - 1)
+      ELSE
+        ALPHWK = ALPHA
+      ENDIF
+
+ 20   IF ((INFMOD.GE.2).AND.(REGFUN.GT.3)) THEN
+        WRITE(*,1002)' MINREG  > ALPHA: ',ALPHWK
+      ENDIF  
+
+      IF (POSMOD.EQ.2) THEN
+       DO 25 I = 1,MX
+        IF ((REGSOL(I).LT.0.D0).AND.(ORDER(I).GT.M)) THEN
+         REGSOL(I) = 0.D0
+        ENDIF
+ 25    CONTINUE
+      ENDIF
+
+      IF (MX.LT.(M + NS)) THEN
+       CALL SETVEC(M + NS - MX,0.D0,REGSOL(MX + 1))
+      ENDIF
+
+      STEP = 1.D0
+      NIT = 1    
+
+*-----MINIMIZATION-----------------------------------------------------
+
+ 30   CALL CAEPS(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BSCALE,NL,L,
+     *           NLMAX,LSCALE,M + NS,ORDER,REGSOL,DPFWK(1),DPFWK(IWK1),
+     *           ALPHWK,REGFUN)
+      MIN = SCPROD(N + NL,DPFWK(1),DPFWK(1))
+
+      CALL CADEPS(N,NE,TI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,BSCALE,NL,
+     *            L,NLMAX,LSCALE,M + NS,ORDER,REGSOL,R,NRMAX,22,IFWK,
+     *            DPFWK(IWK1),ALPHWK,REGFUN)
+*-----CALCULATE DIRECTION----------------------------------------------
+
+      IF (POSMOD.EQ.1) THEN
+
+       CALL CAQRDE(N + NL,MX,R,NRMAX,DPFWK(IWK1))
+       CALL AHOTRV(N + NL,MX,R,NRMAX,DPFWK(IWK1),DPFWK(1))
+       CALL SOUTME(MX,R,NRMAX,1,DPFWK(1),1)
+       CALL COPVEC(MX - M,1.D0,DPFWK(M + 1),DPFWK(M + IWK1))
+       CALL SETVEC(M + NS - MX,0.D0,DPFWK(MX + IWK1))
+
+      ELSE
+
+       CALL MVMUL(N + NL,M + NS,R,NRMAX,REGSOL,DPFWK(1),2)
+
+       CALL CAQRDE(N + NL,M,R,NRMAX,DPFWK(IWK1))
+       DO 35 I = (M + 1),(M + NS)
+        CALL AHOTRV(N + NL,M,R,NRMAX,DPFWK(IWK1),R(1,I))
+ 35    CONTINUE
+       CALL AHOTRV(N + NL,M,R,NRMAX,DPFWK(IWK1),DPFWK(1))
+
+       DO 40 I = (M + 1),(M + NS)
+        DPFWK(ORDER(I) + IWK1 - 1) = REGSOL(I)
+ 40    CONTINUE
+
+       MX = MX - M
+       CALL MIQFWC(N + NL - M,NS,NS,MX,R(M + 1,M + 1),NRMAX,
+     *             DPFWK(M + 1),ORDER(M + 1),DPFWK(M + IWK2))
+       MX = MX + M
+
+       DO 50 I = (M + 1),(M + NS)
+        REGSOL(I) = DPFWK(ORDER(I) + IWK1 - 1)
+ 50    CONTINUE
+
+       CALL ADDVEC(NS,DPFWK(M + IWK2),-1.D0,REGSOL(M + 1),
+     *             DPFWK(M + IWK1))
+
+      ENDIF
+
+*-----OPTIMIZATION STEP------------------------------------------------
+
+      IF ((GNMOD.GT.1).AND.(NIT.LT.4)) THEN
+       STEP = DMIN1(STEP,2.D0**((NIT - 4) * 8))
+      ENDIF
+
+      CALL COPVEC(M,1.D0,REGSOL,DPFWK(IWK2))
+
+      CALL ADDVEC(NS,REGSOL(M + 1),STEP,DPFWK(M + IWK1),
+     *            DPFWK(M + IWK2))
+      CALL CAEPS(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BSCALE,NL,L,
+     *           NLMAX,LSCALE,M + NS,ORDER,DPFWK(IWK2),DPFWK(1),
+     *           DPFWK(IWK3),ALPHWK,REGFUN)
+      CALL AHOTRV(N + NL,M,R,NRMAX,DPFWK(IWK1),DPFWK(1))
+      DPWK1 = SCPROD(N + NL - M,DPFWK(M + 1),DPFWK(M + 1))
+
+      CALL ADDVEC(NS,REGSOL(M + 1),STEP / 2.D0,DPFWK(M + IWK1),
+     *            DPFWK(M + IWK2))
+      CALL CAEPS(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BSCALE,NL,L,
+     *           NLMAX,LSCALE,M + NS,ORDER,DPFWK(IWK2),DPFWK(1),
+     *           DPFWK(IWK3),ALPHWK,REGFUN)
+      CALL AHOTRV(N + NL,M,R,NRMAX,DPFWK(IWK1),DPFWK(1))
+      DPWK2 = SCPROD(N + NL - M,DPFWK(M + 1),DPFWK(M + 1))
+
+      IF (DPWK1.LE.DPWK2) THEN
+       DPWK2 = 2.D0
+      ELSE
+       DPWK1 = DPWK2
+       DPWK2 = 0.5D0
+       STEP = STEP / 2.D0
+      ENDIF
+
+ 60   DPWK4 = STEP * DPWK2
+      IF ((DPWK4.GT.1.D0).AND.(POSMOD.NE.1)) THEN
+       DPWK4 = 1.D0
+      ENDIF
+      CALL ADDVEC(NS,REGSOL(M + 1),DPWK4,DPFWK(M + IWK1),
+     *            DPFWK(M + IWK2))
+      CALL CAEPS(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BSCALE,NL,L,
+     *           NLMAX,LSCALE,M + NS,ORDER,DPFWK(IWK2),DPFWK(1),
+     *           DPFWK(IWK3),ALPHWK,REGFUN)
+      CALL AHOTRV(N + NL,M,R,NRMAX,DPFWK(IWK1),DPFWK(1))
+      DPWK3 = SCPROD(N + NL - M,DPFWK(M + 1),DPFWK(M + 1))
+
+      IF (DPWK3.LT.DPWK1) THEN
+       DPWK1 = DPWK3
+       STEP = DPWK4
+       IF ((STEP.LT.1.D0).OR.(POSMOD.EQ.1)) THEN
+        GOTO 60
+       ENDIF
+      ENDIF
+
+      CALL ADDVEC(NS,REGSOL(M + 1),STEP,DPFWK(M + IWK1),
+     *            REGSOL(M + 1))
+      CALL CAEPS(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BSCALE,NL,L,
+     *           NLMAX,LSCALE,M + NS,ORDER,REGSOL,DPFWK(1),
+     *           DPFWK(IWK3),ALPHWK,REGFUN)
+      CALL AHOTRV(N + NL,M,R,NRMAX,DPFWK(IWK1),DPFWK(1))
+      CALL SOUTME(M,R,NRMAX,1,DPFWK(1),1)
+      CALL ADDVEC(M,REGSOL,1.D0,DPFWK(1),REGSOL)
+
+      IF (INFMOD.GE.3) THEN
+       WRITE(*,1001)' MINREG  > ',NIT,DPWK1,STEP
+      ENDIF
+
+*-----TEST CONVERGENCE-------------------------------------------------
+
+      DPWK2 = DABS(DPWK1 - MIN) / GNPR
+      IF (DPWK2.GT.DPWK1) THEN
+       NIT = NIT + 1
+       IF (NIT.LT.GNIT) THEN
+        GOTO 30
+       ELSE
+        ERRTXT = ' MINREG  > ERROR DETECTED'
+        CALL WEERRM(ERRTXT,.FALSE.)
+       ENDIF
+      ENDIF
+
+      IF ((MINMOD.EQ.2).AND.(NA.LT.NALPHA)) THEN
+        NA = NA + 1
+        ALPHWK = ALPHWK + DALPHA
+        IF (NA.EQ.NALPHA) THEN
+          GNPR = GNPR * 10
+        ENDIF
+        GOTO 20
+      ENDIF
+
+      RETURN
+
+ 1001 FORMAT(1X,A10,I5,2D16.7)
+ 1002 FORMAT(1X,A17,D16.7)
+
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: D(ERIVATIVE OF THE) IN(VERSE) R(GULARIZED) I(NTEGRAL)
+*             O(PERATOR)
+*
+* PURPOSE   : CALCULATE DERIVATIVE OF THE INVERSE REGULARIZATION
+*             INTEGRAL OPERATOR
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             NE     : NUMBER OF DIFFERENT EQUATIONS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*             GERRTI : ERROR OF THE DATA POINTS
+*
+*             M      : NUMBER OF COEFFICIENTS AJ
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             HS     : INTEGRATION CONSTANT
+*
+*             B      : ADDITIONAL LINEAR TERMS
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*             BNORM  : NORM OF THE MATRIX B
+*             BSCALE : SCALEFACTOR FOR THE ADDITIONAL LINEAR TERMS
+*
+*             MX     : NUMBER OF FREE VARIABLES
+*             ORDER  : ORDER OF THE PARAMETER
+*             REGSOL : ESTIMATE FOR THE REGULARIZATION SOLUTION WITH
+*                      MX FREE VARIABLES
+*             ALPHA  : PARAMETER FOR NONLINEAR REGULARIZATION TERM
+*
+*             R      : MATRIX CALCULATED BY MINREG
+*             NRMAX  : LEADING DIMENSION OF THE FIELD R
+*
+*             NXMAX  : LEADING DIMENSION OF THE FIELD X
+*
+*             IFWK   : INTEGER WORKSPACE
+*
+*             DPFWK  : DOUBLE PRECISION WORKSPACE
+*
+*             INFMOD : MODE FOR OUTPUT OF ADDITIONAL INFORMATION
+*             REGFUN : NUMBER OF REGULARIZATION FUNCTIONAL
+*
+*             (ON OUTPUT)
+*             X      : MATRIX FOR THE CALCULATION OF THE SOLUTION
+*
+* COMMENT   : THE SIZE OF THE INTEGER WORKSPACE MUST BE AT LEAST
+*             (M + NS)
+*
+*             THE SIZE OF THE DOUBLE PRECISION WORKSPACE MUST BE AT
+*             LEAST (M + NS)
+*----------------------------------------------------------------------
+
+      SUBROUTINE DINRIO(N,NE,TI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,BSCALE,
+     *                  MX,ORDER,REGSOL,R,NRMAX,X,NXMAX,IFWK,DPFWK,
+     *                  INFMOD,ALPHA,REGFUN)
+
+      INTEGER N,NE
+      DOUBLE PRECISION TI(N),GERRTI(N)
+
+      INTEGER M
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS)
+      DOUBLE PRECISION HS
+
+      INTEGER NBMAX
+      DOUBLE PRECISION B(NBMAX,M)
+      DOUBLE PRECISION BNORM,BSCALE,ALPHA
+
+      INTEGER MX
+      INTEGER ORDER(M + NS)
+      DOUBLE PRECISION REGSOL(M + NS)
+
+      INTEGER NRMAX
+      DOUBLE PRECISION R(NRMAX,M + NS)
+
+      INTEGER NXMAX
+      DOUBLE PRECISION X(NXMAX,M + NS)
+
+      INTEGER IFWK(M + NS)
+
+      DOUBLE PRECISION DPFWK(M + NS)
+
+      INTEGER INFMOD,REGFUN
+
+      INTEGER IDUM
+      DOUBLE PRECISION DPDUM
+      DOUBLE PRECISION DPFDUM(1)
+
+
+*-----WRITE SUBROUTINE INFO--------------------------------------------
+
+      IF (INFMOD.GE.2) THEN
+       WRITE(*,*)' DINRIO > CALLED'
+      ENDIF
+
+*-----CALCULATE PART OF QR-DECOMPOSITION-------------------------------
+
+      CALL CADEPS(N,NE,TI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,BSCALE,IDUM,
+     *            DPFDUM,IDUM,DPDUM,MX,ORDER,REGSOL,X,NXMAX,12,
+     *            IFWK,DPFWK,ALPHA,REGFUN)
+
+      CALL SOLTME(MX,R,NRMAX,N,X,NXMAX)
+
+*-----SOLVE EQUATION RX = V--------------------------------------------
+
+      CALL SOUTME(MX,R,NRMAX,N,X,NXMAX)
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* FUNCTION  : CA(LCULATE) LAMB(DA)
+*
+* PURPOSE   : CALCULATE THE REGULARIZATION PARAMETER BY SEARCHING A
+*             ROOT OF THE FUNCTION CASCCR
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             NE     : NUMBER OF DIFFERENT EQUATIONS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*             GSTI   : ORDINATE OF THE DATA POINTS
+*             GERRTI : ERROR OF THE DATA POINTS
+*             FSSJ   : INITIAL VALUES FOR FSSJ
+*
+*             M      : NUMBER OF COEFFICIENTS AJ
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             HS     : INTEGRATION CONSTANT
+*
+*             B      : ADDITIONAL LINEAR TERMS
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*             BNORM  : NORM OF THE MATRIX B
+*             BSCALE : SCALEFACTOR FOR THE ADDITIONAL LINEAR TERMS
+*
+*             NL     : FIRST DIMENSION OF THE REGULARIZATION OPERATOR
+*             L      : APPROXIMATED REGULARIZATION OPERATOR
+*             NLMAX  : LEADING DIMENSION OF THE FIELD L
+*
+*             MX     : NUMBER OF FREE VARIABLES
+*             ORDER  : ORDER OF THE PARAMETER
+*             REGSOL : ESTIMATE FOR THE REGULARIZATION SOLUTION WITH
+*                      MX FREE VARIABLES
+*
+*             NRMAX  : LEADING DIMENSION OF THE FIELD R
+*
+*             ERROR  : SCALEFACTOR OF THE ERROR
+*
+*             SCLMOD : MODE FOR ESTIMATION OF THE ERROR
+*
+*             LAMB?? : PARAMETER FOR CALCULATION OF LAMBDA
+*
+*             GN??   : PARAMETER FOR MINIMIZATION
+*             MINMOD : PARAMETER FOR MINIMIZATION (GNC METHOD)
+*             ALPHA  : PARAMETER FOR NONLINEAR REGULARIZATION TERM
+*             NALPHA : NUMBER OF GNC STEPS
+*             INIMOD : PARAMETER FOR INITIAL VALUES FOR FSSJ
+*
+*             IFWK   : INTEGER WORKSPACE
+*             DPFWK  : DOUBLE PRECISION WORKSPACE
+*
+*             INFMOD : MODE FOR OUTPUT OF ADDITIONAL INFORMATION
+*             REGFUN : NUMBER OF REGULARIZATION FUNCTIONAL
+*
+*             (ON OUTPUT)
+*             BSCALE : NEW SCALEFACTOR FOR THE ADDITIONAL LINEAR TERMS
+*
+*             REGSOL : REGULARIZATION SOLUTION WITH MX FREE VARIABLES
+*
+*             R      : MATRIX FOR THE CALCULATION OF THE SOLUTION
+*
+*             ERROR  : ESTIMATE FOR THE SCALEFACTOR OF THE ERROR
+*
+* COMMENT   : THE PARAMETERS N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,
+*             BNORM,BSCALE,NL,L,NLMAX,MX,ORDER,REGSOL,R,NRMAX,ERROR,
+*             SCLMOD,GNPR,GNIT,FSSJ,REGFUN, IFWK, AND DPFWK
+*             ARE ONLY USED BY THE FUNCTION CASCCR CALLED BY CALAMB
+*
+*             ACCORDINGLY:
+*             - THE SIZE OF THE INTEGER WORKSPACE (IFWK) MUST BE AT
+*               LEAST (M + NS)
+*             - THE SIZE OF THE DOUBLE PRECISION WORKSPACE DPFWK MUST
+*               BE AT LEAST (3*NL + N + 4) * (M + NS) + 3*NL + 4*N
+*----------------------------------------------------------------------
+
+      DOUBLE PRECISION FUNCTION CALAMB(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,
+     *                                 B,NBMAX,BNORM,BSCALE,NL,L,NLMAX,
+     *                                 MX,ORDER,REGSOL,R,NRMAX,ERROR,
+     *                                 SCLMOD,LAMBST,LAMBSP,LAMBRA,
+     *                                 LAMBPR,LAMBIT,GNPR,GNIT,IFWK,
+     *                                 DPFWK,INFMOD,ALPHA,NALPHA,FSSJ,
+     *                                 REGFUN,MINMOD,INIMOD)
+
+      INTEGER N,NE
+      DOUBLE PRECISION TI(N),GSTI(N),GERRTI(N),FSSJ(NS)
+
+      INTEGER M
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS)
+      DOUBLE PRECISION HS
+
+      INTEGER NBMAX
+      DOUBLE PRECISION B(NBMAX,M)
+      DOUBLE PRECISION BNORM,BSCALE
+
+      INTEGER NL,NLMAX
+      DOUBLE PRECISION L(NLMAX,NS)
+
+      INTEGER MX
+      INTEGER ORDER(M + NS)
+      DOUBLE PRECISION REGSOL(M + NS)
+
+      INTEGER NRMAX
+      DOUBLE PRECISION R(NRMAX,M + NS)
+
+      INTEGER SCLMOD
+      DOUBLE PRECISION ERROR
+
+      INTEGER LAMBIT
+      DOUBLE PRECISION LAMBST,LAMBSP,LAMBRA,LAMBPR
+
+      INTEGER GNIT,MINMOD,INIMOD
+      DOUBLE PRECISION GNPR
+
+      INTEGER NALPHA
+      DOUBLE PRECISION ALPHA
+
+      INTEGER IFWK(*)
+      DOUBLE PRECISION DPFWK(*)
+*-----DOUBLE PRECISION DPFWK((3*NL + N + 4) * (M + NS) + 3*NL + 4*N)---
+
+      INTEGER INFMOD,REGFUN
+
+      DOUBLE PRECISION CASCCR
+
+      CHARACTER*60 ERRTXT
+
+      DOUBLE PRECISION LAMMIN,LAMMAX
+
+      INTEGER IWK1,IWK2
+      DOUBLE PRECISION DPWK1,DPWK2,DPWK3
+
+*-----WRITE SUBROUTINE INFO--------------------------------------------
+
+      IF (INFMOD.GE.2) THEN
+       WRITE(*,*)' CALAMB > CALLED'
+      ENDIF
+
+*-----GET INTERVAL FOR LAMBDA------------------------------------------
+
+      IF (INFMOD.GE.3) THEN
+       WRITE(*,*)' CALAMB > GET INTERVAL FOR LAMBDA'
+      ENDIF
+
+      LAMMIN = LAMBST
+      LAMMAX = LAMBST
+
+      DPWK3 = 10.D0**LAMBST
+      DPWK1 = CASCCR(DPWK3,N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,
+     *               BNORM,BSCALE,NL,L,NLMAX,MX,ORDER,REGSOL,R,NRMAX,
+     *               ERROR,SCLMOD,GNPR,GNIT,IFWK,DPFWK,INFMOD,
+     *               ALPHA,NALPHA,FSSJ,REGFUN,MINMOD,INIMOD)
+      IWK1 = 1
+      IF (INFMOD.GE.3) THEN
+       WRITE(*,1001)'CALAMB > ',LAMBST,DPWK1
+      ENDIF
+
+      IF (DPWK1.GT.0.D0) THEN
+
+ 10    LAMMIN = LAMMIN - LAMBSP
+       IF (DABS(LAMBST - LAMMIN).GT.LAMBRA) THEN
+        ERRTXT = ' CALAMB > ERROR DETECTED (1)'
+        CALL WEERRM(ERRTXT,.TRUE.)
+       ENDIF
+       DPWK2 = DPWK1
+
+       DPWK3 = 10.D0**LAMMIN
+       DPWK1 = CASCCR(DPWK3,N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,
+     *                BNORM,BSCALE,NL,L,NLMAX,MX,ORDER,REGSOL,R,NRMAX,
+     *                ERROR,SCLMOD,GNPR,GNIT,IFWK,DPFWK,INFMOD,
+     *                ALPHA,NALPHA,FSSJ,REGFUN,MINMOD,INIMOD)
+       IWK1 = IWK1 + 1
+       IF (INFMOD.GE.3) THEN
+        WRITE(*,1001)'CALAMB > ',LAMMIN,DPWK1
+       ENDIF
+
+       IF (DPWK1.GT.0.D0) THEN
+        GOTO 10
+       ENDIF
+       LAMMAX = LAMMIN + LAMBSP
+
+      ELSE
+
+       DPWK2 = DPWK1
+ 20    LAMMAX = LAMMAX + LAMBSP
+       IF (DABS(LAMBST - LAMMAX).GT.LAMBRA) THEN
+        ERRTXT = ' CALAMB > ERROR DETECTED (2)'
+        CALL WEERRM(ERRTXT,.TRUE.)
+       ENDIF
+       DPWK1 = DPWK2
+
+       DPWK3 = 10.D0**LAMMAX
+       DPWK2 = CASCCR(DPWK3,N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,
+     *                BNORM,BSCALE,NL,L,NLMAX,MX,ORDER,REGSOL,R,NRMAX,
+     *                ERROR,SCLMOD,GNPR,GNIT,IFWK,DPFWK,INFMOD,
+     *                ALPHA,NALPHA,FSSJ,REGFUN,MINMOD,INIMOD)
+       IWK1 = IWK1 + 1
+       IF (INFMOD.GE.3) THEN
+        WRITE(*,1001)'CALAMB > ',LAMMAX,DPWK2
+       ENDIF
+
+       IF (DPWK2.LT.0.D0) THEN
+        GOTO 20
+       ENDIF
+       LAMMIN = LAMMAX - LAMBSP
+
+      ENDIF
+
+*-----CALCULATE LAMBDA WITH SC-CRITERION-------------------------------
+
+      IF (INFMOD.GE.3) THEN
+       WRITE(*,*)' CALAMB > CALCULATE LAMBDA'
+      ENDIF
+
+      IWK2 = 1
+
+ 30   CALAMB = (DPWK2 * LAMMIN - DPWK1 * LAMMAX) / (DPWK2 - DPWK1)
+      IF ((LAMMAX - CALAMB).LT.(LAMBPR / 2.D0)) THEN
+       CALAMB = LAMMAX - LAMBPR / 2.D0
+      ELSE IF ((CALAMB - LAMMIN).LT.(LAMBPR / 2.D0)) THEN
+       CALAMB = LAMMIN + LAMBPR / 2.D0
+      ENDIF
+      DPWK3 = 10.D0**CALAMB
+      DPWK3 = CASCCR(DPWK3,N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,
+     *               BNORM,BSCALE,NL,L,NLMAX,MX,ORDER,REGSOL,R,NRMAX,
+     *               ERROR,SCLMOD,GNPR,GNIT,IFWK,DPFWK,INFMOD,
+     *               ALPHA,NALPHA,FSSJ,REGFUN,MINMOD,INIMOD)
+      IWK1 = IWK1 + 1
+      IF (DPWK3.GT.0.D0) THEN
+       LAMMAX = (DPWK2 * CALAMB - DPWK3 * LAMMAX)
+       IF ((DPWK3.GE.DPWK2).OR.
+     *     (LAMMAX.LE.(LAMMIN * (DPWK2 - DPWK3)))) THEN
+        LAMMAX = (LAMMIN + CALAMB) / 2.D0
+       ELSE
+        LAMMAX = LAMMAX / (DPWK2 - DPWK3)
+       ENDIF
+       DPWK2 = 10.D0**LAMMAX
+       DPWK2 = CASCCR(DPWK2,N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,
+     *                BNORM,BSCALE,NL,L,NLMAX,MX,ORDER,REGSOL,R,NRMAX,
+     *                ERROR,SCLMOD,GNPR,GNIT,IFWK,DPFWK,INFMOD,
+     *                ALPHA,NALPHA,FSSJ,REGFUN,MINMOD,INIMOD)
+       IWK1 = IWK1 + 1
+       IF (DPWK2.LE.0.D0) THEN
+        LAMMIN = LAMMAX
+        DPWK1 = DPWK2
+        LAMMAX = CALAMB
+        DPWK2 = DPWK3
+       ENDIF
+      ELSE
+       LAMMIN = (DPWK1 * CALAMB - DPWK3 * LAMMIN)
+       IF ((DPWK3.LE.DPWK1).OR.
+     *     (LAMMIN.LE.(LAMMAX * (DPWK1 - DPWK3)))) THEN
+        LAMMIN = (LAMMAX + CALAMB) / 2.D0
+       ELSE
+        LAMMIN = LAMMIN / (DPWK1 - DPWK3)
+       ENDIF
+       DPWK1 = 10.D0**LAMMIN
+       DPWK1 = CASCCR(DPWK1,N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,
+     *                BNORM,BSCALE,NL,L,NLMAX,MX,ORDER,REGSOL,R,NRMAX,
+     *                ERROR,SCLMOD,GNPR,GNIT,IFWK,DPFWK,INFMOD,
+     *                ALPHA,NALPHA,FSSJ,REGFUN,MINMOD,INIMOD)
+       IWK1 = IWK1 + 1
+       IF (DPWK1.GT.0.D0) THEN
+        LAMMAX = LAMMIN
+        DPWK2 = DPWK1
+        LAMMIN = CALAMB
+        DPWK1 = DPWK3
+       ENDIF
+      ENDIF
+
+      IF (INFMOD.GE.3) THEN
+       WRITE(*,1002)'CALAMB > ',LAMMIN,LAMMAX,DPWK1,DPWK2
+      ENDIF
+
+      IF ((LAMMAX - LAMMIN).GT.LAMBPR) THEN
+       IWK2 = IWK2 + 1
+       IF (IWK2.EQ.LAMBIT) THEN
+        ERRTXT = ' CALAMB > ERROR DETECTED (3)'
+        CALL WEERRM(ERRTXT,.FALSE.)
+       ELSE
+        GOTO 30
+       ENDIF
+      ENDIF
+
+      IF (INFMOD.GE.3) THEN
+       WRITE(*,1003)'CALAMB > FUNCTION EVALUATIONS        :',IWK1
+       WRITE(*,1003)'CALAMB > ITERATIONS                  :',IWK2
+       DPWK1 = LAMMAX - LAMMIN
+       WRITE(*,1004)'CALAMB > PRECISION                   :',DPWK1
+       WRITE(*,1004)'CALAMB > PARAMETER                   :',CALAMB
+       WRITE(*,1004)'CALAMB > ESTIMATED ERROR             :',ERROR
+      ENDIF
+
+      RETURN
+
+ 1001 FORMAT(1X,A9,2D16.7)
+ 1002 FORMAT(1X,A9,4D16.7)
+ 1003 FORMAT(1X,A38,I5)
+ 1004 FORMAT(1X,A38,D18.8)
+
+      END
+
+
+*----------------------------------------------------------------------
+* FUNCTION  : CA(LCULATE) SC CR(ITERION)
+*
+* PURPOSE   : CALCULATE THE SC CRITERION FOR A GIVEN REGULARIZATION
+*             PARAMETER
+*
+* VARIABLES : (ON INPUT)
+*             N      : NUMBER OF DATA POINTS
+*             NE     : NUMBER OF DIFFERENT EQUATIONS
+*             TI     : ABSZISSE OF THE DATA POINTS
+*             GSTI   : ORDINATE OF THE DATA POINTS
+*             GERRTI : ERROR OF THE DATA POINTS
+*             FSSC   : INITIAL VALUES FOR FSSJ (I.E. SC-SOLUTION)
+*
+*             M      : NUMBER OF COEFFICIENTS AJ
+*
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*             SJ     : ABSZISSES WHERE THE SOLUTION IS CALCULATED
+*             HS     : INTEGRATION CONSTANT
+*
+*             B      : ADDITIONAL LINEAR TERMS
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*             BNORM  : NORM OF THE MATRIX B
+*             BSCALE : SCALEFACTOR FOR THE ADDITIONAL LINEAR TERMS
+*
+*             NL     : FIRST DIMENSION OF THE REGULARIZATION OPERATOR
+*             L      : APPROXIMATED REGULARIZATION OPERATOR
+*             NLMAX  : LEADING DIMENSION OF THE FIELD L
+*
+*             MX     : NUMBER OF FREE VARIABLES
+*             ORDER  : ORDER OF THE PARAMETER
+*             REGSOL : ESTIMATE FOR THE REGULARIZATION SOLUTION WITH
+*                      MX FREE VARIABLES
+*
+*             NRMAX  : LEADING DIMENSION OF THE FIELD R
+*
+*             ERROR  : SCALEFACTOR OF THE ERROR
+*
+*             SCLMOD : MODE FOR ESTIMATION OF THE ERROR
+*
+*             GN??   : PARAMETER FOR MINIMIZATION
+*             MINMOD : PARAMETER FOR MINIMIZATION (GNC METHOD)
+*             ALPHA  : PARAMETER FOR NONLINEAR REGULARIZATION TERM
+*             NALPHA : NUMBER OF GNC STEPS
+*             INIMOD : PARAMETER FOR INITIAL VALUES FOR FSSJ
+*
+*             IFWK   : INTEGER WORKSPACE
+*             DPFWK  : DOUBLE PRECISION WORKSPACE
+*
+*             INFMOD : MODE FOR OUTPUT OF ADDITIONAL INFORMATION
+*             REGFUN : NUMBER OF REGULARIZATION FUNCTIONAL
+*
+*             (ON OUTPUT)
+*             BSCALE : NEW SCALEFACTOR FOR THE ADDITIONAL LINEAR TERMS
+*
+*             REGSOL : REGULARIZATION SOLUTION WITH MX FREE VARIABLES
+*
+*             R      : MATRIX FOR THE CALCULATION OF THE SOLUTION
+*
+*             ERROR  : ESTIMATE FOR THE SCALEFACTOR OF THE ERROR
+*
+* COMMENT   : THE SIZE OF THE INTEGER WORKSPACE MUST BE AT LEAST 
+*             (M + NS)
+*
+*             THE SIZE OF THE DOUBLE PRECISION WORKSPACE MUST BE AT
+*             LEAST (3*NL + N + 4) * (M + NS) + 3*NL + 4*N
+*----------------------------------------------------------------------
+
+      DOUBLE PRECISION FUNCTION CASCCR(LAMBDA,N,NE,TI,GSTI,GERRTI,M,
+     *                                 NS,SJ,HS,B,NBMAX,BNORM,BSCALE,
+     *                                 NL,L,NLMAX,MX,ORDER,REGSOL,R,
+     *                                 NRMAX,ERROR,SCLMOD,GNPR,GNIT,
+     *                                 IFWK,DPFWK,INFMOD,ALPHA,NALPHA,
+     *                                 FSSC,REGFUN,MINMOD,INIMOD)
+
+      DOUBLE PRECISION LAMBDA
+
+      INTEGER N,NE
+      DOUBLE PRECISION TI(N),GSTI(N),GERRTI(N),FSSC(NS)
+
+      INTEGER M
+
+      INTEGER NS
+      DOUBLE PRECISION SJ(NS)
+      DOUBLE PRECISION HS
+
+      INTEGER NBMAX
+      DOUBLE PRECISION B(NBMAX,M)
+      DOUBLE PRECISION BNORM,BSCALE
+
+      INTEGER NL,NLMAX
+      DOUBLE PRECISION L(NLMAX,NS)
+
+      INTEGER MX
+      INTEGER ORDER(M + NS)
+      DOUBLE PRECISION REGSOL(M + NS)
+
+      INTEGER NRMAX
+*     NRMAX = N + NL
+      DOUBLE PRECISION R(NRMAX,M + NS)
+
+      INTEGER SCLMOD
+      DOUBLE PRECISION ERROR
+
+      INTEGER GNIT,MINMOD,INIMOD
+      DOUBLE PRECISION GNPR
+
+      INTEGER NALPHA
+      DOUBLE PRECISION ALPHA
+
+      INTEGER IFWK(M + NS)
+      DOUBLE PRECISION DPFWK((3*NL + N + 4) * (M + NS) + 3*NL + 4*N)
+
+      INTEGER INFMOD,REGFUN
+
+      DOUBLE PRECISION SCPROD
+
+      INTEGER I,J
+
+      INTEGER IWK1,IWK2,IWK3,IWK4,IWK5,IWK6,IWK7,IWK8
+      DOUBLE PRECISION DPWK1,DPWK2,DPWK3,DPWK4,DPWK5,DPWK6
+
+      DOUBLE PRECISION DPDUM
+
+*-----INITIALIZATION OF PARAMETERS FOR WORKSPACE MANAGEMENT------------
+
+      IWK1 = M + NS + 1
+      IWK2 = IWK1 + N
+      IWK3 = IWK2 + NL * (M + NS)
+      IWK4 = IWK3 + NL + N
+      IWK5 = IWK4 + NL + N
+
+      IWK6 = IWK5 + N + NL
+
+      IWK7 = IWK5 + 3 * (M + NS) + N + NL
+      IWK8 = IWK7 + NL * (M + NS)
+*     WORKSPACE AT IWK8:  NRMAX * (M + NS) = (N + NL) * (M + NS)
+
+     
+*-----CALCULATE SC CRITERION-------------------------------------------
+
+
+      DPWK1 = DSQRT(LAMBDA)
+
+      IF (MOD(INIMOD,10).GE.1) THEN
+        DO 5 I = 1,M+NS
+          IF (ORDER(I).GT.M) THEN
+            REGSOL(I) = FSSC(ORDER(I) - M)
+          ENDIF
+ 5      CONTINUE
+      ENDIF
+
+      IF (M.GT.0) THEN
+       CALL COPVEC(M,BSCALE,DPFWK(1),DPFWK(1))
+      ENDIF
+*     CALCULATE F(LAMBDA), A(LAMBDA)                   -> REGSOL
+      CALL MINREG(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,
+     *            BSCALE,NL,L,NLMAX,DPWK1,MX,ORDER,REGSOL,R,
+     *            NRMAX,1,REGFUN,1,DPDUM,GNPR,GNIT,IFWK,
+     *            DPFWK(IWK5),INFMOD - 2,FSSC,MINMOD,0,ALPHA,NALPHA)
+      IF (M.GT.0) THEN
+       CALL COPVEC(M,1.D0 / BSCALE,DPFWK(1),DPFWK(1))
+      ENDIF
+
+*     CALCULATE G = K[F(LAMBDA)] + B A(LAMBDA)         -> DPFWK(IWK1)
+      CALL CAAPPX(N,NE,TI,M,NS,SJ,HS,B,NBMAX,BSCALE,MX,ORDER,REGSOL,
+     *            DPFWK(IWK1),DPFWK(IWK5))
+
+      IF (M.GT.0) THEN
+       CALL COPVEC(M,BSCALE,REGSOL,REGSOL)
+      ENDIF
+*     CALCULATE H = K^-1[G], C = B^-1[G]               -> DPFWK(1)
+*               R FROM QR DECOMPOSITION OF DEPS(H)     -> R
+      CALL MINREG(N,NE,TI,DPFWK(IWK1),GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,
+     *            BSCALE,NL,L,NLMAX,DPWK1,MX,ORDER,DPFWK(1),R,
+     *            NRMAX,1,REGFUN,1,DPDUM,GNPR,GNIT,IFWK,
+     *            DPFWK(IWK5),INFMOD - 2,FSSC,MINMOD,0,ALPHA,NALPHA)
+*     CALCULATE DEPS(H) = Q2 * R (MODUS 21)            -> DPFWK(IWK2)
+      CALL CADEPS(N,NE,TI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,BSCALE,NL,
+     *            L,NLMAX,DPWK1,MX,ORDER,DPFWK(1),DPFWK(IWK2),NL,21,
+     *            IFWK,DPFWK(IWK5),ALPHA,REGFUN)
+      IF (M.GT.0) THEN
+       CALL COPVEC(M,1.D0 / BSCALE,REGSOL,REGSOL)
+      ENDIF
+
+
+*     CALCULATE EPS(H) = -SQRT(L)*O[H] (I=N+1,..,N+NL) -> DPFWK(IWK3+N)
+      CALL CAEPS(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BSCALE,NL,L,
+     *           NLMAX,DPWK1,MX,ORDER,DPFWK(1),DPFWK(IWK3),
+     *           DPFWK(IWK5),ALPHA,REGFUN)
+
+
+*     CALCULATE F(LAMBDA) - H (A(LAMBDA) - C)          -> DPFWK(IWK6)
+      CALL ADDVEC(M+NS,REGSOL,-1.D0,DPFWK(1),DPFWK(IWK6))
+*     CALCULATE DEPS(F(LAMBDA)-H) = Q2 * R (MODUS 21)  -> DPFWK(IWK7)
+      CALL CADEPS(N,NE,TI,GERRTI,M,NS,SJ,HS,B,NBMAX,BNORM,BSCALE,NL,
+     *            L,NLMAX,DPWK1,MX,ORDER,DPFWK(IWK6),DPFWK(IWK7),NL,21,
+     *            IFWK,DPFWK(IWK5),ALPHA,REGFUN)
+*     CALCULATE EPS(H) = -SQRT(L)*O[F(LAMBDA)-H]       -> DPFWK(IWK4+N)
+      CALL CAEPS(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BSCALE,NL,L,
+     *           NLMAX,DPWK1,MX,ORDER,DPFWK(IWK6),DPFWK(IWK4),
+     *           DPFWK(IWK5),ALPHA,REGFUN)
+
+*     CALCULATE Q2 = DEPS(H) * R^-1                    -> DPFWK(IWK2)
+      CALL SOLTME(MX,R,NRMAX,NL,DPFWK(IWK2),NL)
+*     CALCULATE Q = DEPS(F(LAMBDA)-H) * R^-1           -> DPFWK(IWK7)
+      CALL SOLTME(MX,R,NRMAX,NL,DPFWK(IWK7),NL)
+
+*     CALCULATE - SQRT(L) * Q2^T * O[H]                -> DPFWK(IWK5)
+      CALL TMVMUL(NL,MX,DPFWK(IWK2),NL,DPFWK(IWK3+N),DPFWK(IWK5),1)
+*     CALCULATE - SQRT(L) * Q * Q2^T * O[H]            -> DPFWK(IWK3)
+      CALL MVMUL(NL,MX,DPFWK(IWK7),NL,DPFWK(IWK5),DPFWK(IWK3),1)
+*     CALCULATE L * O[F(LAMBDA)-H]^T * Q * Q2^T *O[H]  -> DPWK1
+      DPWK1 = SCPROD(NL,DPFWK(IWK3),DPFWK(IWK4+N))
+
+      DO 10 J = 1,MX
+       DO 10 I = 1,MX
+*       CALCULATE R = Q2^T * Q2
+        R(I,J) = SCPROD(NL,DPFWK((I - 1) * NL + IWK2),
+     *                     DPFWK((J - 1) * NL + IWK2))
+*       CALCULATE R = Q^T  * Q
+        DPFWK((I - 1) + (J - 1) * MX + IWK8)
+     *         = SCPROD(NL,DPFWK((I - 1) * NL + IWK7),
+     *                     DPFWK((J - 1) * NL + IWK7))
+ 10   CONTINUE
+
+      DPWK2 = 0.D0
+      DO 20 J = 1,MX
+       DO 20 I = 1,MX
+*       CALCULATE TRACE(Q^T * Q * Q2^T * Q2 * Q2^T * Q2)
+        DPWK2 = DPWK2 +
+     *          SCPROD(MX,DPFWK((I - 1) * MX + IWK8),R(1,J)) * R(I,J)
+ 20   CONTINUE
+
+      DPWK3 = 0.D0
+      DPWK6 = 0.D0
+      DO 30 I = 1,MX
+*      CALCULATE TRACE(Q^T * Q * Q2^T * Q2)
+       DPWK3 = DPWK3 + SCPROD(MX,DPFWK((I - 1) * MX + IWK8),R(1,I))
+*      CALCULATE TRACE(Q2^T * Q2 * Q2^T * Q2)
+       DPWK6 = DPWK6 + SCPROD(MX,R(1,I),R(1,I))
+ 30   CONTINUE
+
+      DPWK2 = DPWK3 - DPWK2
+
+      IF (SCLMOD.EQ.2) THEN
+
+*-----CALCULATE ESTIMATE FOR ERROR-------------------------------------
+
+       DPWK6 = DPWK6 + DBLE(N - MX)
+
+       CALL CAEPS(N,NE,TI,DPFWK(IWK1),GERRTI,M,NS,SJ,HS,B,NBMAX,BSCALE,
+     *            NL,L,NLMAX,0.D0,MX,ORDER,DPFWK(1),DPFWK(IWK5),
+     *            DPFWK(IWK6),ALPHA,REGFUN)
+       DPWK4 = SCPROD(N,DPFWK(IWK5),DPFWK(IWK5))
+       
+
+       CALL CAEPS(N,NE,TI,GSTI,GERRTI,M,NS,SJ,HS,B,NBMAX,BSCALE,NL,L,
+     *            NLMAX,0.D0,MX,ORDER,REGSOL,DPFWK(IWK5),
+     *            DPFWK(IWK6),ALPHA,REGFUN)
+       DPWK5 = SCPROD(N,DPFWK(IWK5),DPFWK(IWK5))
+
+       ERROR = DSQRT((DPWK5 - DPWK4) / DPWK6)
+
+      ENDIF
+
+      CASCCR = DPWK1 / (ERROR * ERROR) / DPWK2 - 1.D0
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: CA(LCULATE) ER(RORS WITH) M(ATRIX) D(ECOMPOSITION)
+*
+* PURPOSE   : CALCULATE ERRORS WITH MATRIX DECOMPOSITION AS CALCULATED
+*             BY DINRIO
+*
+* VARIABLES : (ON INPUT)
+*             ERROR  : SCALEFACTOR OF THE ERROR
+*
+*             N      : NUMBER OF DATA POINTS
+*             MX     : SECOND DIMENSION OF THE MATRIX X
+*             X      : MATRIX FOR CALCULATION OF THE SOLUTION
+*             NXMAX  : LEADING DIMENSION OF THE FIELD X
+*
+*             INFMOD : MODE FOR OUTPUT OF ADDITIONAL INFORMATION
+*
+*             (ON OUTPUT)
+*             REGERR : ERRORS OF THE REGULARIZATION SOLUTION
+*----------------------------------------------------------------------
+
+      SUBROUTINE CAERMD(ERROR,N,MX,X,NXMAX,REGERR,INFMOD)
+
+      DOUBLE PRECISION ERROR
+
+      INTEGER N,MX,NXMAX
+      DOUBLE PRECISION X(NXMAX,MX)
+
+      DOUBLE PRECISION REGERR(MX)
+
+      INTEGER INFMOD
+
+      DOUBLE PRECISION SCPROD
+
+      INTEGER I
+
+*-----WRITE SUBROUTINE INFO--------------------------------------------
+
+      IF (INFMOD.GE.2) THEN
+       WRITE(*,*)' CAERMD > CALLED'
+      ENDIF
+
+*-----CALCULATE ERRORS OF REG. SOL. WITH THE REG. INVERSE INT. OP.-----
+
+      DO 10 I = 1,MX
+       REGERR(I) = SCPROD(N,X(1,I),X(1,I))
+       REGERR(I) = ERROR * DSQRT(REGERR(I))
+ 10   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: RE(ORDER) RE(GULARIZED) SO(LUTION)
+*
+* PURPOSE   : REORDER REGULARIZATION SOLUTION AND COPY IT TO
+*             ASJ, AERRJ, FSSJ, FMSJ AND FERRSJ
+*
+* VARIABLES : (ON INPUT)
+*             MX     : NUMBER OF FREE VARIABLES
+*             ORDER  : ORDER OF THE VARIABLES
+*             REGSOL : REGULARIZATION SOLUTION WITH THE ORDER GIVEN BY
+*                      ORDER
+*             REGERR : ERRORS OF THE REGULARIZATION SOLUTION WITH THE
+*                      ORDER GIVEN BY ORDER
+*
+*             BSCALE : SCALEFACTOR FOR THE ADDITIONAL LINEAR TERMS
+*
+*             M      : NUMBER OF COEFFICIENTS AJ
+*             NS     : NUMBER OF POINTS WHERE THE SOL. IS CALCULATED
+*
+*             POSMOD : MODE FOR THE CALCULATION OF A POSITIVE SOLUTION
+*
+*             INFMOD : MODE FOR OUTPUT OF ADDITIONAL INFORMATION
+*
+*             (ON OUTPUT)
+*             ASJ    : VALUES OF THE CALCULATED COEFFICIENTS AJ
+*             AERRJ  : ERRORS OF THE CALCULATED COEFFICIENTS AJ
+*
+*             FSSJ   : VALUES OF THE CALCULATED SOLUTION
+*             FMSJ   : MIDPOINT FOR THE ERRORS OF THE CALCULATED SOL.
+*             FERRSJ : ERRORS OF THE CALCULATED SOLUTION
+*----------------------------------------------------------------------
+
+      SUBROUTINE RERESO(MX,ORDER,REGSOL,REGERR,BSCALE,M,ASJ,AERRJ,NS,
+     *                  FSSJ,FMSJ,FERRSJ,POSMOD,INFMOD,ERSMOD)
+
+      INTEGER MX
+      INTEGER ORDER(M + NS)
+      DOUBLE PRECISION REGSOL(MX),REGERR(MX)
+
+      DOUBLE PRECISION BSCALE
+
+      INTEGER M
+      DOUBLE PRECISION ASJ(M),AERRJ(M)
+
+      INTEGER NS
+      DOUBLE PRECISION FSSJ(NS),FMSJ(NS),FERRSJ(NS)
+
+      INTEGER POSMOD,ERSMOD
+
+      INTEGER INFMOD
+
+      INTEGER I
+
+*-----WRITE SUBROUTINE INFO--------------------------------------------
+
+      IF (INFMOD.GE.2) THEN
+       WRITE(*,*)' RERESO > CALLED'
+      ENDIF
+      
+*-----REORDER REGULARIZATION SOLUTION AND COPY IT TO OUTPUT VARIABLES--
+
+      IF (ERSMOD.EQ.1) THEN
+
+       DO 10 I = 1,MX
+        IF (ORDER(I).LE.M) THEN
+         ASJ(ORDER(I)) = REGSOL(I) * BSCALE
+         AERRJ(ORDER(I)) = REGERR(I) * BSCALE
+        ELSE
+         FSSJ(ORDER(I) - M) = REGSOL(I)
+         FMSJ(ORDER(I) - M) = REGSOL(I)
+         FERRSJ(ORDER(I) - M) = REGERR(I)
+        ENDIF
+ 10    CONTINUE
+
+      ELSE
+
+       DO 15 I = 1,MX
+        IF (ORDER(I).LE.M) THEN
+         ASJ(ORDER(I)) = REGSOL(I) * BSCALE
+        ELSE
+         FSSJ(ORDER(I) - M) = REGSOL(I)
+        ENDIF
+ 15    CONTINUE
+
+      ENDIF
+
+*-----CORRECT SOLUTION IF POSITIVITY CONSTRAINTS ARE ACTIVE------------
+
+      IF (POSMOD.NE.1) THEN
+
+       IF (ERSMOD.EQ.1) THEN
+        DO 20 I = (MX + 1),(M + NS)
+         FSSJ(ORDER(I) - M) = 0.D0
+         FMSJ(ORDER(I) - M) = 0.D0
+         FERRSJ(ORDER(I) - M) = 0.D0
+ 20     CONTINUE
+        DO 25 I = 1,NS
+         IF (FSSJ(I).LT.0.D0) THEN
+          IF (INFMOD.GE.3) THEN
+           WRITE(*,1001)'RERESO > NEGATIVE VALUE              :',
+     *                   I,FSSJ(I)
+          ENDIF
+          FSSJ(I) = 0.D0
+          FMSJ(I) = 0.D0
+         ENDIF
+         IF (FERRSJ(I).GT.FSSJ(I)) THEN
+          FMSJ(I) = (FERRSJ(I) + FSSJ(I)) / 2.D0
+          FERRSJ(I) = FMSJ(I)
+         ENDIF
+ 25     CONTINUE
+       ELSE
+        DO 30 I = (MX + 1),(M + NS)
+         FSSJ(ORDER(I) - M) = 0.D0
+ 30     CONTINUE
+        DO 35 I = 1,NS
+         IF (FSSJ(I).LT.0.D0) THEN
+          FSSJ(I) = 0.D0
+         ENDIF
+ 35     CONTINUE
+       ENDIF
+
+      ENDIF
+
+      RETURN
+
+ 1001 FORMAT(1X,A38,I5,D18.8)
+
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: SO(LVE) U(PPER) T(RIANGULAR) M(ATRIX) E(QUATION)
+*
+* PURPOSE   : SOLVE THE MATRIX EQUATION RXT = BT (R UPPER TRIANGULAR)
+*
+* VARIABLES : (ON INPUT)
+*             NR     : FIRST / SECOND DIMENSION OF THE MATRIX R
+*             R      : UPPER TRIANGULAR MATRIX
+*             NRMAX  : LEADING DIMENSION OF THE FIELD R
+*
+*             NB     : FIRST DIMENSION OF THE MATRIX B
+*             B      : MATRIX
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*
+*             (ON OUTPUT)
+*             B      : SOLUTION X
+*----------------------------------------------------------------------
+
+      SUBROUTINE SOUTME(NR,R,NRMAX,NB,B,NBMAX)
+
+      INTEGER NR,NRMAX
+      DOUBLE PRECISION R(NRMAX,NR)
+
+      INTEGER NB,NBMAX
+      DOUBLE PRECISION B(NBMAX,NR)
+
+      INTEGER I,J,K
+
+*-----SOLVE UPPER TRIANGULAR MATRIX EQUATION---------------------------
+
+      DO 20 I = NR,1,-1
+       DO 10 J = 1,NB
+        B(J,I) = B(J,I) / R(I,I)
+ 10    CONTINUE
+       DO 20 J = (I - 1),1,-1
+        DO 20 K = 1,NB
+         B(K,J) = B(K,J) - B(K,I) * R(J,I)
+ 20   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: SO(LVE) L(OWER) T(RIANGULAR) M(ATRIX) E(QUATION)
+*
+* PURPOSE   : SOLVE THE MATRIX EQUATION RTXT = BT (R UPPER TRIANGULAR)
+*
+* VARIABLES : (ON INPUT)
+*             NR     : FIRST / SECOND DIMENSION OF THE MATRIX R
+*             R      : UPPER TRIANGULAR MATRIX
+*             NRMAX  : LEADING DIMENSION OF THE FIELD R
+*
+*             NB     : FIRST DIMENSION OF THE MATRIX B
+*             B      : MATRIX
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*
+*             (ON OUTPUT)
+*             B      : SOLUTION X
+*----------------------------------------------------------------------
+
+      SUBROUTINE SOLTME(NR,R,NRMAX,NB,B,NBMAX)
+
+      INTEGER NR,NRMAX
+      DOUBLE PRECISION R(NRMAX,NR)
+
+      INTEGER NB,NBMAX
+      DOUBLE PRECISION B(NBMAX,NR)
+
+      INTEGER I,J,K
+
+*-----SOLVE LOWER TRIANGULAR MATRIX EQUATION---------------------------
+
+      DO 20 I = 1,NR
+       DO 10 J = 1,NB
+        B(J,I) = B(J,I) / R(I,I)
+ 10    CONTINUE
+       DO 20 J = (I + 1),NR
+        DO 20 K = 1,NB
+         B(K,J) = B(K,J) - B(K,I) * R(I,J)
+ 20   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: S(OLVE) S(IMULTANEOUSLY TWO) L(OWER) T(RIANGULAR)
+*             M(ATRIX) E(QUATIONS)
+*
+* PURPOSE   : SOLVE SIMULTANEOUSLY TWO MATRIX EQUATIONS
+*             RTX1T = B1T, RTX2T = B2T (R UPPER TRIANGULAR)
+*
+* VARIABLES : (ON INPUT)
+*             NR     : FIRST / SECOND DIMENSION OF THE MATRIX R
+*             R      : UPPER TRIANGULAR MATRIX
+*             NRMAX  : LEADING DIMENSION OF THE FIELD R
+*
+*             NB     : FIRST DIMENSION OF THE MATRICES B1,B2
+*             B1,B2  : MATRICES 
+*             NBMAX  : LEADING DIMENSION OF THE FIELDS B1,B2
+*
+*             (ON OUTPUT)
+*             B1,B2  : SOLUTION X1,X2
+*----------------------------------------------------------------------
+
+      SUBROUTINE SSLTME(NR,R,NRMAX,NB,B1,B2,NBMAX)
+
+      INTEGER NR,NRMAX
+      DOUBLE PRECISION R(NRMAX,NR)
+
+      INTEGER NB,NBMAX
+      DOUBLE PRECISION B1(NBMAX,NR),B2(NBMAX,NR)
+
+      INTEGER I,J,K
+
+*-----SOLVE LOWER TRIANGULAR MATRIX EQUATION---------------------------
+
+      DO 20 I = 1,NR
+       DO 10 J = 1,NB
+        B1(J,I) = B1(J,I) / R(I,I)
+        B2(J,I) = B2(J,I) / R(I,I)
+ 10    CONTINUE
+       DO 20 J = (I + 1),NR
+        DO 20 K = 1,NB
+         B1(K,J) = B1(K,J) - B1(K,I) * R(I,J)
+         B2(K,J) = B2(K,J) - B2(K,I) * R(I,J)
+ 20   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: CA(LCULATE) QR DE(COMPOSITION)
+*
+* PURPOSE   : CALCULATE R OF THE QR DECOMPOSITION OF THE MATRIX B
+*
+* VARIABLES : (ON INPUT)
+*             NB     : FIRST DIMENSION OF THE MATRIX B
+*             MB     : SECOND DIMENSION OF THE MATRIX B
+*             B      : MATRIX
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*
+*             (ON OUTPUT)
+*             B      : R (UPPER TRIANGULAR PART) AND INFORMATION ABOUT
+*                      THE ORTHOGONAL TRANSFORMATIONS (LOWER TRIANGULAR
+*                      PART)
+*             SCALE  : SCALING FACTOR FOR THE ORTHOGONAL TRANSFORM.
+*----------------------------------------------------------------------
+
+      SUBROUTINE CAQRDE(NB,MB,B,NBMAX,SCALE)
+
+      INTEGER NB,MB,NBMAX
+      DOUBLE PRECISION B(NBMAX,MB)
+      
+      DOUBLE PRECISION SCALE(MB)
+      
+      INTEGER I,J,K
+      
+      DOUBLE PRECISION DPWK
+      
+      DO 40 I = 1,MB
+
+*-----CONSTRUCT HOUSEHOLDER TRANSFORMATION-----------------------------
+
+       DPWK = 0.D0
+       DO 10 J = (I + 1),NB
+        DPWK = DPWK + B(J,I) * B(J,I)
+ 10    CONTINUE
+       IF (DPWK.GT.0.D0) THEN
+        DPWK = -DSIGN(DSQRT(DPWK + B(I,I) * B(I,I)),B(I,I))
+        B(I,I) = B(I,I) - DPWK
+        SCALE(I) = DPWK
+       
+*------APPLY HOUSEHOLDER TRANSFORMATION--------------------------------
+
+        DO 30 J = (I + 1),MB
+         DPWK = 0.D0
+         DO 20 K = I,NB
+          DPWK = DPWK + B(K,I) * B(K,J)
+ 20      CONTINUE
+         DPWK = DPWK / B(I,I) / SCALE(I)
+         DO 30 K = I,NB
+          B(K,J) = B(K,J) + DPWK * B(K,I)
+ 30     CONTINUE
+
+        DPWK = SCALE(I)
+        SCALE(I) = B(I,I)
+        B(I,I) = DPWK
+
+
+*------NO TRANSFORMATION NECESSARY-------------------------------------
+
+       ELSE
+        SCALE(I) = 0.D0
+       ENDIF
+       
+ 40   CONTINUE
+      
+      RETURN
+      END
+      
+
+*----------------------------------------------------------------------
+* SUBROUTINE: A(PPLY) HO(USEHOLDER) TR(ANSFORMATIONS TO) V(ECTOR)
+*
+* PURPOSE   : MULTIPLY VECTOR WITH THE TRANSPOSE OF THE ORTHOGONAL
+*             MATRIX OBTAINED FROM A QR-FACTORIZATION
+*
+* VARIABLES : (ON INPUT)
+*             NB     : FIRST DIMENSION OF THE MATRIX B
+*             MB     : SECOND DIMENSION OF THE MATRIX B
+*             B      : MATRIX CONTAINING THE HOUSEHOLDER TRANSFORM.
+*                      BELOW THE DIAGONAL ELEMENTS
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*
+*             SCALE  : SCALEFACTORS FOR THE HOUSEHOLDER TRANSFORM.
+*
+*             X      : VECTOR
+*
+*             (ON OUTPUT)
+*             X      : VECTOR MULTIPLIED WITH QT
+*----------------------------------------------------------------------
+
+      SUBROUTINE AHOTRV(NB,MB,B,NBMAX,SCALE,X)
+
+      INTEGER NB,MB,NBMAX
+      DOUBLE PRECISION B(NBMAX,MB)
+
+      DOUBLE PRECISION SCALE(MB)
+
+      DOUBLE PRECISION X(NB)
+
+      INTEGER I,J
+
+      DOUBLE PRECISION DPWK
+
+
+*-----APPLY HOUSEHOLDER TRANSFORMATIONS TO VECTOR----------------------
+
+      DO 30 I = 1,MB
+
+       IF (SCALE(I).NE.0.D0) THEN
+        DPWK = SCALE(I) * X(I)
+        DO 10 J = (I + 1),NB
+         DPWK = DPWK + B(J,I) * X(J)
+ 10     CONTINUE
+        X(I) = X(I) + DPWK / B(I,I)
+        DPWK = DPWK / SCALE(I) / B(I,I)
+        DO 20 J = (I + 1),NB
+         X(J) = X(J) + DPWK * B(J,I)
+ 20     CONTINUE
+       ENDIF
+
+ 30   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: MI(NIMIZE) Q(UADRATIC) F(UNCTION) W(ITH) C(ONSTRAINTS)
+*
+* PURPOSE   : MINIMIZE A QUADRATIC FUNCTION WITH POSITIVITY CONSTRAINTS
+*             USING A SIMPLIFIED QUADRATIC PROGRAMMING ALGORITHM
+*
+* VARIABLES : (ON INPUT)
+*             NB     : FIRST DIMENSION OF THE MATRIX B
+*             MB     : SECOND DIMENSION OF THE MATRIX B
+*             MBCO   : NUMBER OF CONSTRAINT VARIABLES
+*             MBFR   : GUESS OF THE NUMBER OF FREE VARIABLES
+*             
+*             B      : MATRIX
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*
+*             A      : VECTOR CONTAINING THE DATA
+*
+*             ORDER  : ORDER OF THE COLUMNS OF THE MATRIX B
+*
+*             (ON OUTPUT)
+*             MBFR   : NUMBER OF THE FREE VARIABLES AT THE MINIMUM
+*
+*             B      : MATRIX B MULTIPLIED BY AN ORTHOGONAL MATRIX
+*                      THE MBFR X MBFR PART IS AN UPPER TRIANGULAR
+*                      MATRIX AND BELONGS TO THE FREE VARIABLES
+*
+*             A      : VECTOR A MULTIPLIED BY AN ORTHOGONAL MATRIX
+*
+*             ORDER  : ORDER OF THE COLUMNS OF THE MATRIX B
+*
+*             SOL    : RESULT FOR THE FREE VARIABLES
+*----------------------------------------------------------------------
+
+      SUBROUTINE MIQFWC(NB,MB,MBCO,MBFR,B,NBMAX,A,ORDER,SOL)
+
+      INTEGER NB,MB,MBCO,MBFR,NBMAX
+      DOUBLE PRECISION B(NBMAX,MB)
+
+      DOUBLE PRECISION A(NB)
+
+      INTEGER ORDER(MB)
+
+      DOUBLE PRECISION SOL(MB)
+
+      INTEGER MBUNCO
+
+      DOUBLE PRECISION MIN
+
+      INTEGER I,J
+
+      INTEGER IWK1,IWK2
+
+      DOUBLE PRECISION DPWK1,DPWK2,DPWK3,DPWK4
+
+*-----INITIALIZE VARIABLES---------------------------------------------
+
+      MBUNCO = MB - MBCO
+
+      MIN = 0.D0
+      DO 30 I = 1,NB
+       MIN = MIN + A(I) * A(I)
+ 30   CONTINUE
+
+*-----INITIALIZE QR DECOMPOSITION--------------------------------------
+
+      CALL CAQRDE(NB,MB,B,NBMAX,SOL)
+      CALL AHOTRV(NB,MB,B,NBMAX,SOL,A)
+      DO 70 I = 1,(MB - 1)
+       DO 70 J = (I + 1),MB
+        B(J,I) = 0.D0
+ 70   CONTINUE
+
+*-----MINIMIZE QUADRATIC FUNCTION WITH CONSTRAINTS---------------------
+
+*-----CALCULATE SOLUTION FOR THE GIVEN SET OF CONSTRAINTS--------------
+
+ 80   DO 90 I = (MBUNCO + 1),MBFR
+       SOL(I) = A(I)
+ 90   CONTINUE
+      IWK1 = 0
+      DPWK1 = 0.D0
+      DO 100 I = MBFR,(MBUNCO + 1),-1 
+       DPWK2 = SOL(I) / B(I,I)
+       IF (DPWK2.LT.DPWK1) THEN
+        DPWK1 = DPWK2
+        IWK1 = I
+       ENDIF
+       DO 100 J = (MBUNCO + 1),(I - 1)
+        SOL(J) = SOL(J) - B(J,I) * DPWK2
+ 100  CONTINUE
+
+      IF (IWK1.NE.0) THEN
+
+*-----ADD CONSTRAINT TO ACTIVE SET-------------------------------------
+
+*-----REORDER MATRIX---------------------------------------------------
+
+       MBFR = MBFR - 1
+       IWK2 = ORDER(IWK1)
+       DO 110 I = 1,IWK1
+        SOL(I) = B(I,IWK1)
+ 110   CONTINUE
+       DO 120 I = IWK1,MBFR
+        ORDER(I) = ORDER(I + 1)
+        DO 120 J = 1,(I + 1)
+         B(J,I) = B(J,I + 1)
+ 120   CONTINUE
+       ORDER(MBFR + 1) = IWK2
+       DO 130 I = 1,IWK1
+        B(I,MBFR + 1) = SOL(I)
+ 130   CONTINUE
+       DO 140 I = (IWK1 + 1),MB
+        B(I,MBFR + 1) = 0.D0
+ 140   CONTINUE
+
+*-----APPLY GIVENS ROTATIONS TO DELETE ELEMENTS BELOW THE DIAGONAL-----
+
+       DO 160 I = IWK1,MBFR
+        DPWK1 = B(I,I)
+        DPWK2 = B(I + 1,I)
+        IF (DPWK2.NE.0.D0) THEN
+       
+*-----CONSTRUCT GIVENS ROTATION----------------------------------------
+
+         B(I,I) = DSQRT(DPWK1 * DPWK1 + DPWK2 * DPWK2)
+         B(I + 1,I) = 0.D0
+         DPWK1 = DPWK1 / B(I,I)
+         DPWK2 = DPWK2 / B(I,I)
+        
+*-----APPLY GIVENS ROTATION TO MATRIX----------------------------------
+
+         DO 150 J = (I + 1),MB
+          DPWK3 = B(I,J)
+          DPWK4 = B(I + 1,J)
+          B(I,J) = DPWK1 * DPWK3 + DPWK2 * DPWK4
+          B(I + 1,J) = -DPWK2 * DPWK3 + DPWK1 * DPWK4
+ 150     CONTINUE
+
+*-----APPLY GIVENS ROTATION TO VECTOR----------------------------------
+
+         DPWK3 = A(I)
+         DPWK4 = A(I + 1)
+         A(I) = DPWK1 * DPWK3 + DPWK2 * DPWK4
+         A(I + 1) = -DPWK2 * DPWK3 + DPWK1 * DPWK4
+        ENDIF
+       
+ 160   CONTINUE
+
+       GOTO 80
+       
+      ENDIF
+
+*-----TEST IF LAST ITERATION IMPROVED THE RESULT-----------------------
+
+      DPWK1 = 0.D0
+      DO 170 I = (MBFR + 1),MB
+       DPWK1 = DPWK1 + A(I) * A(I)
+ 170  CONTINUE
+
+      IF (DPWK1.LT.MIN) THEN
+
+       MIN = DPWK1
+      
+*-----CALCULATE LAGRANGE MULTIPLIERS-----------------------------------
+
+       IWK1 = 0
+       DPWK1 = 0.D0
+       DO 190 I = (MBFR + 1),MB
+        DPWK2 = 0.D0
+        DO 180 J = (MBFR + 1),MB
+         DPWK2 = DPWK2 - B(J,I) * A(J)
+ 180    CONTINUE
+        IF (DPWK2.LT.DPWK1) THEN
+         DPWK1 = DPWK2
+         IWK1 = I
+        ENDIF
+ 190   CONTINUE
+
+       IF (IWK1.NE.0) THEN
+
+*-----REMOVE CONSTRAINT FROM ACTIVE SET--------------------------------
+
+*-----REORDER MATRIX---------------------------------------------------
+
+        MBFR = MBFR + 1
+        IWK2 = ORDER(IWK1)
+        ORDER(IWK1) = ORDER(MBFR)
+        ORDER(MBFR) = IWK2
+        DO 200 I = 1,MB
+         DPWK1 = B(I,IWK1)
+         B(I,IWK1) = B(I,MBFR)
+         B(I,MBFR) = DPWK1
+ 200    CONTINUE
+
+*-----APPLY HOUSEHOLDER TRANSFORMATION TO DELETE ELEMENTS BELOW THE----
+*-----DIAGONAL---------------------------------------------------------
+
+*-----CONSTRUCT HOUSEHOLDER TRANSFORMATION-----------------------------
+
+        DO 210 I = (MBFR + 1),MB
+         DPWK1 = DPWK1 + B(I,MBFR) * B(I,MBFR)
+ 210    CONTINUE
+        IF (DPWK1.GT.0.D0) THEN
+         DPWK1 = -DSIGN(DSQRT(DPWK1 + B(MBFR,MBFR) * B(MBFR,MBFR)),
+     *                  B(MBFR,MBFR))
+         B(MBFR,MBFR) = B(MBFR,MBFR) - DPWK1
+
+*-----APPLY HOUSEHOLDER TRANSFORMATION TO MATRIX-----------------------
+
+         DO 230 I = (MBFR + 1),MB
+          DPWK2 = 0.D0
+          DO 220 J = MBFR,MB
+           DPWK2 = DPWK2 + B(J,I) * B(J,MBFR)
+ 220      CONTINUE
+          DPWK2 = DPWK2 / DPWK1 / B(MBFR,MBFR)
+          DO 230 J = MBFR,MB
+           B(J,I) = B(J,I) + DPWK2 * B(J,MBFR)
+ 230     CONTINUE
+
+*-----APPLY HOUSEHOLDER TRANSFORMATION TO VECTOR-----------------------
+
+         DPWK2 = 0.D0
+         DO 240 I = MBFR,MB
+          DPWK2 = DPWK2 + A(I) * B(I,MBFR)
+ 240     CONTINUE
+         DPWK2 = DPWK2 / DPWK1 / B(MBFR,MBFR)
+         DO 250 I = MBFR,MB
+          A(I) = A(I) + DPWK2 * B(I,MBFR)
+ 250     CONTINUE
+
+         B(MBFR,MBFR) = DPWK1
+         DO 260 I = (MBFR + 1),MB
+          B(I,MBFR) = 0.D0
+ 260     CONTINUE
+
+        ENDIF
+
+        GOTO 80
+
+       ENDIF
+
+      ENDIF
+
+*-----CALCULATE FINAL RESULT AT THE MINIMUM----------------------------
+
+      DO 270 I = 1,MBFR
+       SOL(I) = A(I)
+ 270  CONTINUE
+
+      DO 280 I = MBFR,1,-1
+       SOL(I) = SOL(I) / B(I,I)
+       DO 280 J = 1,(I - 1)
+        SOL(J) = SOL(J) - B(J,I) * SOL(I)
+ 280  CONTINUE
+
+      DO 290 I = (MBFR + 1),MB
+       SOL(I) = 0.D0
+ 290  CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* FUNCTION  : SC(ALAR) PROD(UCT)
+*
+* PURPOSE   : CALCULATE SCALAR PRODUCT (X,Y)
+*
+* VARIABLES : (ON INPUT)
+*             N      : DIMENSION OF VECTOR X AND Y
+*             X      : VECTOR X
+*             Y      : VECTOR Y
+*----------------------------------------------------------------------
+
+      DOUBLE PRECISION FUNCTION SCPROD(N,X,Y)
+
+      INTEGER N
+
+      DOUBLE PRECISION X(N),Y(N)
+
+      INTEGER I
+
+      SCPROD = 0.D0
+      DO 10 I = 1,N
+       SCPROD = SCPROD + X(I) * Y(I)
+ 10   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: SET VEC(TOR)
+*
+* PURPOSE   : SET ALL ELEMENTS OF X EQUAL TO A
+*
+* VARIABLES : (ON INPUT)
+*             N      : DIMENSION OF VECTOR X
+*             A      : SCALAR A
+*
+*             (ON OUTPUT)
+*             X      : VECTOR X WITH X(I) = A
+*----------------------------------------------------------------------
+
+      SUBROUTINE SETVEC(N,A,X)
+
+      INTEGER N
+
+      DOUBLE PRECISION A
+      DOUBLE PRECISION X(N)
+
+      INTEGER I
+
+      DO 10 I = 1,N
+       X(I) = A
+ 10   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: COP(Y) VEC(TOR)
+*
+* PURPOSE   : SET Y EQUAL TO  A * X
+*
+* VARIABLES : (ON INPUT)
+*             N      : DIMENSION OF VECTOR X AND Y
+*             A      : SCALAR A
+*             X      : VECTOR X
+*
+*             (ON OUTPUT)
+*             Y      : VECTOR Y = A * X
+*----------------------------------------------------------------------
+
+      SUBROUTINE COPVEC(N,A,X,Y)
+
+      INTEGER N
+
+      DOUBLE PRECISION A
+      DOUBLE PRECISION X(N),Y(N)
+
+      INTEGER I
+
+      DO 10 I = 1,N
+       Y(I) = A * X(I)
+ 10   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: SW(A)P VEC(TORS)
+*
+* PURPOSE   : REPLACE X BY Y AND Y BY X
+*
+* VARIABLES : (ON INPUT)
+*             N      : DIMENSION OF VECTOR X AND Y
+*             X      : VECTOR X
+*             Y      : VECTOR Y
+*
+*             (ON OUTPUT)
+*             X      : VECTOR Y
+*             Y      : VECTOR X
+*----------------------------------------------------------------------
+
+      SUBROUTINE SWPVEC(N,X,Y)
+
+      INTEGER N
+
+      DOUBLE PRECISION X(N),Y(N)
+
+      DOUBLE PRECISION DPWK
+
+      INTEGER I
+
+      DO 10 I = 1,N
+       DPWK = X(I)
+       X(I) = Y(I)
+       Y(I) = DPWK
+ 10   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: ADD VEC(TORS)
+*
+* PURPOSE   : CALCULATE Z = X + A * Y
+*
+* VARIABLES : (ON INPUT)
+*             N      : DIMENSION OF VECTOR X, Y AND Z
+*             X      : VECTOR X
+*             A      : SCALAR A
+*             Y      : VECTOR Y
+*
+*             (ON OUTPUT)
+*             Z      : VECTOR Z = X + A * Y
+*----------------------------------------------------------------------
+
+      SUBROUTINE ADDVEC(N,X,A,Y,Z)
+
+      INTEGER N
+
+      DOUBLE PRECISION A
+      DOUBLE PRECISION X(N),Y(N),Z(N)
+
+      INTEGER I
+
+      DO 10 I = 1,N
+       Z(I) = X(I) + A * Y(I)
+ 10   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: M(ATRIX) V(ECTOR) MUL(TIPLICATION)
+*
+* PURPOSE   : CALCULATE Y = B * X OR Y = Y + B * X
+*
+* VARIABLES : (ON INPUT)
+*             NB     : FIRST DIMENSION OF THE MATRIX B
+*             MB     : SECOND DIMENSION OF THE MATRIX B
+*             B      : MATRIX
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*             X      : VECTOR X
+*             MODUS  : MODUS OF MVMUL
+*
+*             (ON OUTPUT)
+*             Y      : VECTOR Y = B * X (MODUS = 1) OR
+*                      VECTOR Y = Y + B * X (MODUS = 2)
+*----------------------------------------------------------------------
+
+      SUBROUTINE MVMUL(NB,MB,B,NBMAX,X,Y,MODUS)
+
+      INTEGER NB,MB
+
+      INTEGER NBMAX
+      DOUBLE PRECISION B(NBMAX,MB)
+
+      DOUBLE PRECISION X(MB),Y(NB)
+
+      INTEGER MODUS
+
+      INTEGER I,J
+
+
+      IF (MODUS.EQ.1) THEN
+       CALL SETVEC(NB,0.D0,Y)
+      ENDIF
+
+      DO 10 I = 1,MB
+       DO 10 J = 1,NB
+        Y(J) = Y(J) + B(J,I) * X(I)
+ 10   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: T(RANSPOSED) M(ATRIX) V(ECTOR) MUL(TIPLICATION)
+* PURPOSE   : CALCULATE Y = TB * X OR Y = Y + TB * X
+*
+* VARIABLES : (ON INPUT)
+*             NB     : FIRST DIMENSION OF THE MATRIX B
+*             MB     : SECOND DIMENSION OF THE MATRIX B
+*             B      : MATRIX
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*             X      : VECTOR X
+*             MODUS  : MODUS OF TMVMUL
+*
+*             (ON OUTPUT)
+*             Y      : VECTOR Y = TB * X (MODUS = 1) OR
+*                      VECTOR Y = Y + TB * X (MODUS = 2)
+*----------------------------------------------------------------------
+
+      SUBROUTINE TMVMUL(NB,MB,B,NBMAX,X,Y,MODUS)
+
+      INTEGER NB,MB
+
+      INTEGER NBMAX
+      DOUBLE PRECISION B(NBMAX,MB)
+
+      DOUBLE PRECISION X(NB),Y(MB)
+
+      INTEGER MODUS
+
+      INTEGER I,J
+
+
+      IF (MODUS.EQ.1) THEN
+       CALL SETVEC(MB,0.D0,Y)
+      ENDIF
+
+      DO 10 I = 1,MB
+       DO 10 J = 1,NB
+        Y(I) = Y(I) + B(J,I) * X(J)
+ 10   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: SET MAT(RIX)
+*
+* PURPOSE   : SET ALL ELEMENTS OF B EQUAL TO A
+*
+* VARIABLES : (ON INPUT)
+*             NB     : FIRST DIMENSION OF THE MATRIX B
+*             MB     : SECOND DIMENSION OF THE MATRIX B
+*             A      : SCALAR A
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*
+*             (ON OUTPUT)
+*             B      : MATRIX X WITH B(I,J) = A
+*----------------------------------------------------------------------
+
+      SUBROUTINE SETMAT(NB,MB,A,B,NBMAX)
+
+      INTEGER NB,MB
+
+      DOUBLE PRECISION A
+
+      INTEGER NBMAX
+      DOUBLE PRECISION B(NBMAX,MB)
+
+      INTEGER I,J
+
+      DO 10 I = 1,MB
+       DO 10 J = 1,NB
+        B(J,I) = A
+ 10   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: COP(Y) MAT(RIX)
+*
+* PURPOSE   : SET C EQUAL TO  A * B
+*
+* VARIABLES : (ON INPUT)
+*             NB     : FIRST DIMENSION OF THE MATRIX B
+*             MB     : SECOND DIMENSION OF THE MATRIX B
+*             A      : SCALAR A
+*             B      : MATRIX B
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*             NCMAX  : LEADING DIMENSION OF THE FIELD C
+*
+*             (ON OUTPUT)
+*             C      : MATRIX C = A * B
+*----------------------------------------------------------------------
+
+      SUBROUTINE COPMAT(NB,MB,A,B,NBMAX,C,NCMAX)
+
+      INTEGER NB,MB
+
+      DOUBLE PRECISION A
+
+      INTEGER NBMAX,NCMAX
+      DOUBLE PRECISION B(NBMAX,MB),C(NCMAX,MB)
+
+      INTEGER I,J
+
+      DO 10 I = 1,MB
+       DO 10 J = 1,NB
+        C(J,I) = A * B(J,I)
+10    CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* FUNCTION  : CA(LCULATE) NORM
+*
+* PURPOSE   : CALCULATE THE NORM OF A MATRIX
+*
+* VARIABLES : (ON INPUT)
+*             NB     : FIRST DIMENSION OF THE MATRIX B
+*             MB     : SECOND DIMENSION OF THE MATRIX B
+*             B      : MATRIX
+*             NBMAX  : LEADING DIMENSION OF THE FIELD B
+*----------------------------------------------------------------------
+
+      DOUBLE PRECISION FUNCTION CANORM(NB,MB,B,NBMAX)
+
+      INTEGER NB,MB,NBMAX
+      DOUBLE PRECISION B(NBMAX,MB)
+
+      INTEGER I,J
+      DOUBLE PRECISION DPWK
+
+      CANORM = 0.D0
+      DO 20 I = 1,NB
+       DPWK = 0.D0
+       DO 10 J = 1,MB
+        DPWK = DPWK + DABS(B(I,J))
+ 10    CONTINUE
+       CANORM = DMAX1(CANORM,DPWK)
+ 20   CONTINUE
+
+      RETURN
+      END
+
+
+*----------------------------------------------------------------------
+* SUBROUTINE: W(RIT)E ERR(OR) M(ESSAGE)
+*
+* PURPOSE   : WRITE ERROR MSG. TO OUTPUT AND STOP PROGRAM IF NECESSARY
+*
+* VARIABLES : ERRTXT : ERROR MESSAGE
+*             STOPFL : FLAG FOR PROGRAMSTOP
+*----------------------------------------------------------------------
+
+      SUBROUTINE WEERRM(ERRTXT,STOPFL)
+
+      CHARACTER*60 ERRTXT
+
+      LOGICAL STOPFL
+
+      WRITE(*,*)'--------------------------------------------------'
+      WRITE(*,*)ERRTXT
+
+      IF (STOPFL) THEN
+       WRITE(*,*)'-----------------GENEREG STOPPED------------------'
+       WRITE(*,*)'--------------------------------------------------'
+       STOP
+      ENDIF
+
+      WRITE(*,*)'----------------GENEREG CONTINUES-----------------'
+      WRITE(*,*)'--------------------------------------------------'
+
+      RETURN
+      END
